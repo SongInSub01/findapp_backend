@@ -1,0 +1,16 @@
+[Unit]
+Description=Findapp Next.js Backend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/app/findapp_backend
+Environment=NODE_ENV=production
+EnvironmentFile=-/srv/app/findapp_backend/.env.production
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
