@@ -8,6 +8,7 @@ import type {
   FinderBootstrapDto,
   InquiryDto,
   ListingDetailDto,
+  CurrentLocationDto,
   LostItemDto,
   ListingSummaryDto,
   MatchDto,
@@ -57,10 +58,12 @@ import {
   type ListingSummaryRow,
   updateLegacyLostItemReward,
   updateFoundListing,
+  upsertLostItemFromDevice,
   updateLostListing,
 } from '@/lib/repositories/finder_listing_data';
 import { listChatThreadsForUser, updateChatThread } from '@/lib/repositories/chat_data';
-import { listBleDevices } from '@/lib/repositories/device_data';
+import { listBleDevices, updateBleDevice } from '@/lib/repositories/device_data';
+import { getCurrentLocation } from '@/lib/repositories/current_location_data';
 import { getAlertSettings, listSafeZones } from '@/lib/repositories/setting_data';
 import { requireRequestedUser } from '@/lib/services/user_lookup_service';
 import { formatRelativeDateLabel, nowLabel } from '@/lib/utils/time_label';
@@ -141,11 +144,19 @@ function toBleDeviceDto(row: {
   location: string;
   last_seen: string;
   ble_code: string;
+  last_signal_at: string;
+  ble_status: 'near' | 'far' | 'risk' | 'disconnected' | 'lost' | 'rediscovered';
   map_x: number;
   map_y: number;
   distance: string | null;
   reward: number | null;
   photo_asset_path: string | null;
+  last_rssi: number | null;
+  last_detected_latitude: number | null;
+  last_detected_longitude: number | null;
+  last_detected_accuracy_meters: number | null;
+  focused_scan_until: string | null;
+  rediscovered_at: string | null;
 }): BleDeviceDto {
   return {
     id: row.id,
@@ -154,12 +165,20 @@ function toBleDeviceDto(row: {
     status: row.status,
     location: row.location,
     lastSeen: row.last_seen,
+    lastSignalAt: row.last_signal_at,
+    bleStatus: row.ble_status ?? 'near',
     bleCode: row.ble_code,
     mapX: Number(row.map_x),
     mapY: Number(row.map_y),
     distance: row.distance,
     reward: row.reward,
     photoAssetPath: row.photo_asset_path,
+    lastRssi: row.last_rssi == null ? null : Number(row.last_rssi),
+    lastDetectedLatitude: row.last_detected_latitude == null ? null : Number(row.last_detected_latitude),
+    lastDetectedLongitude: row.last_detected_longitude == null ? null : Number(row.last_detected_longitude),
+    lastDetectedAccuracyMeters: row.last_detected_accuracy_meters == null ? null : Number(row.last_detected_accuracy_meters),
+    focusedScanUntil: row.focused_scan_until,
+    rediscoveredAt: row.rediscovered_at,
   };
 }
 
@@ -174,6 +193,7 @@ function toLostItemDto(row: {
   distance: string;
   owner_name: string;
   description: string;
+  source_device_id: string | null;
   map_x: number;
   map_y: number;
   thread_id: string | null;
@@ -190,6 +210,7 @@ function toLostItemDto(row: {
     distance: row.distance,
     ownerName: row.owner_name,
     description: row.description,
+    sourceDeviceId: row.source_device_id,
     mapX: Number(row.map_x),
     mapY: Number(row.map_y),
     threadId: row.thread_id,
@@ -258,6 +279,8 @@ function toAlertSettingsDto(row: {
   sound_enabled: boolean;
   auto_approve_photos: boolean;
   keep_photo_private_by_default: boolean;
+  default_reward: number;
+  map_theme: 'dark' | 'light';
 } | null): AlertSettingsDto {
   return {
     distanceMeters: row?.distance_meters ?? 10,
@@ -266,6 +289,25 @@ function toAlertSettingsDto(row: {
     soundEnabled: row?.sound_enabled ?? true,
     autoApprovePhotos: row?.auto_approve_photos ?? false,
     keepPhotoPrivateByDefault: row?.keep_photo_private_by_default ?? true,
+    defaultReward: row?.default_reward ?? 30000,
+    mapTheme: row?.map_theme ?? 'dark',
+  };
+}
+
+function toCurrentLocationDto(row: {
+  latitude: number;
+  longitude: number;
+  accuracy_meters: number | null;
+  updated_at: string;
+} | null): CurrentLocationDto | null {
+  if (!row) {
+    return null;
+  }
+  return {
+    latitude: Number(row.latitude),
+    longitude: Number(row.longitude),
+    accuracyMeters: row.accuracy_meters == null ? null : Number(row.accuracy_meters),
+    updatedAt: row.updated_at,
   };
 }
 
@@ -327,6 +369,79 @@ function buildDashboardSummary(input: {
     matchedCount: input.matches.length,
     unreadNotificationCount: input.notifications.filter((item) => !item.isRead).length,
   };
+}
+
+function isDeviceOverdue(input: {
+  lastSignalAt: string;
+  disconnectMinutes: number;
+}) {
+  const lastSignalTime = Date.parse(input.lastSignalAt);
+  if (Number.isNaN(lastSignalTime)) {
+    return false;
+  }
+  return Date.now() - lastSignalTime > input.disconnectMinutes * 60_000;
+}
+
+async function reconcileOverdueBleDevices(input: {
+  userId: string;
+  ownerName: string;
+  alertSettings: AlertSettingsDto;
+}) {
+  const deviceRows = await listBleDevices(input.userId);
+  const overdueRows = deviceRows.filter(
+    (device) =>
+      device.status !== 'lost' &&
+      isDeviceOverdue({
+        lastSignalAt: device.last_signal_at,
+        disconnectMinutes: input.alertSettings.disconnectMinutes,
+      }),
+  );
+
+  for (const device of overdueRows) {
+    const reward = device.reward ?? input.alertSettings.defaultReward;
+    await upsertLostItemFromDevice({
+      ownerUserId: input.userId,
+      ownerName: input.ownerName,
+      title: device.name,
+      location: device.location,
+      timeLabel: formatRelativeDateLabel(device.last_signal_at),
+      lostAt: device.last_signal_at,
+      reward,
+      status: 'lost',
+      photoStatus: input.alertSettings.keepPhotoPrivateByDefault ? 'locked' : 'approved',
+      distance: device.distance ?? '미확인',
+      description: `${device.name}의 BLE 신호가 ${input.alertSettings.disconnectMinutes}분 이상 감지되지 않았습니다.`,
+      mapX: Number(device.map_x),
+      mapY: Number(device.map_y),
+      photoAssetPath: device.photo_asset_path,
+      sourceDeviceId: device.id,
+      listingStatus: 'open',
+    });
+    await updateBleDevice({
+      deviceId: device.id,
+      userId: input.userId,
+      name: device.name,
+      iconKey: device.icon_key,
+      status: 'lost',
+      bleStatus: 'lost',
+      location: device.location,
+      lastSeen: '방금 전',
+      lastSignalAt: device.last_signal_at,
+      bleCode: device.ble_code,
+      mapX: Number(device.map_x),
+      mapY: Number(device.map_y),
+      distance: device.distance,
+      reward,
+      photoAssetPath: device.photo_asset_path,
+    });
+    await createNotification({
+      userId: input.userId,
+      title: `${device.name}이(가) 분실 상태로 전환되었습니다`,
+      body: `${input.alertSettings.disconnectMinutes}분 이상 신호가 끊겨 자동으로 분실 목록에 반영했습니다.`,
+      timeLabel: nowLabel(),
+      type: 'alert',
+    });
+  }
 }
 
 function tokenize(value: string) {
@@ -522,12 +637,21 @@ export async function getFinderBootstrap(input: {
     '사용자를 찾을 수 없습니다. 먼저 회원가입 후 로그인해 주세요.',
   );
 
+  const alertSettingsRow = await getAlertSettings(user.id);
+
+  const alertSettings = toAlertSettingsDto(alertSettingsRow);
+  await reconcileOverdueBleDevices({
+    userId: user.id,
+    ownerName: user.public_name,
+    alertSettings,
+  });
+
   const [
     myDeviceRows,
     legacyLostRows,
+    currentLocationRow,
     chatThreadRows,
     safeZoneRows,
-    alertSettingsRow,
     reportRows,
     myLostRows,
     myFoundRows,
@@ -541,9 +665,9 @@ export async function getFinderBootstrap(input: {
   ] = await Promise.all([
     listBleDevices(user.id),
     listLegacyLostItems(),
+    getCurrentLocation(user.id),
     listChatThreadsForUser(user.id),
     listSafeZones(user.id),
-    getAlertSettings(user.id),
     listReports(),
     listLostListingsByUser(user.id),
     listFoundListingsByUser(user.id),
@@ -558,9 +682,9 @@ export async function getFinderBootstrap(input: {
 
   const myDevices = myDeviceRows.map(toBleDeviceDto);
   const lostItems = legacyLostRows.map(toLostItemDto);
+  const currentLocation = toCurrentLocationDto(currentLocationRow);
   const chatThreads = chatThreadRows.map(toChatThreadDto);
   const safeZones = safeZoneRows.map(toSafeZoneDto);
-  const alertSettings = toAlertSettingsDto(alertSettingsRow);
   const myLostItems = myLostRows.map((item) => toListingSummaryDto(item, user.id));
   const myFoundItems = myFoundRows.map((item) => toListingSummaryDto(item, user.id));
   const recentLostItems = recentLostRows.map((item) => toListingSummaryDto(item, user.id));
@@ -583,6 +707,7 @@ export async function getFinderBootstrap(input: {
     },
     myDevices,
     lostItems,
+    currentLocation,
     chatThreads,
     safeZones,
     alertSettings,

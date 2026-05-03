@@ -1,4 +1,3 @@
-// 현재 DB 연결 상태와 생성된 테이블 목록을 출력한다.
 import { query } from '../lib/db/query';
 
 async function main() {

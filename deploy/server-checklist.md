@@ -40,8 +40,8 @@ npm run db:setup
 npm run db:check
 ```
 
-운영 서버에서는 `npm run db:seed`를 실행하지 않는 것을 권장합니다.
-기존 사용자/운영 데이터를 덮어쓸 수 있으므로 초기 개발 서버나 빈 테스트 DB에서만 사용합니다.
+`npm run db:seed`는 운영 DB 전용입니다.
+`NODE_ENV=production`과 `DB_SEED_SCOPE=operational`이 있는 운영 배포 환경에서만 실행하세요.
 
 ## 6. 빌드 및 실행
 

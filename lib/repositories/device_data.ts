@@ -11,15 +11,25 @@ export async function listBleDevices(userId: string) {
     location: string;
     last_seen: string;
     ble_code: string;
+    last_signal_at: string;
+    ble_status: 'near' | 'far' | 'risk' | 'disconnected' | 'lost' | 'rediscovered';
     map_x: number;
     map_y: number;
     distance: string | null;
     reward: number | null;
     photo_asset_path: string | null;
+    last_rssi: number | null;
+    last_detected_latitude: number | null;
+    last_detected_longitude: number | null;
+    last_detected_accuracy_meters: number | null;
+    focused_scan_until: string | null;
+    rediscovered_at: string | null;
   }>(
     `
       select id, name, icon_key, status, location, last_seen, ble_code, map_x, map_y,
-             distance, reward, photo_asset_path
+             last_signal_at, ble_status, distance, reward, photo_asset_path,
+             last_rssi, last_detected_latitude, last_detected_longitude,
+             last_detected_accuracy_meters, focused_scan_until, rediscovered_at
       from ble_devices
       where user_id = $1
       order by created_at asc
@@ -37,6 +47,8 @@ export async function createBleDevice(input: {
   location: string;
   lastSeen: string;
   bleCode: string;
+  lastSignalAt?: string;
+  bleStatus?: 'near' | 'far' | 'risk' | 'disconnected' | 'lost' | 'rediscovered';
   mapX: number;
   mapY: number;
   distance?: string | null;
@@ -47,9 +59,9 @@ export async function createBleDevice(input: {
     `
       insert into ble_devices (
         user_id, name, icon_key, status, location, last_seen, ble_code,
-        map_x, map_y, distance, reward, photo_asset_path
+        last_signal_at, ble_status, map_x, map_y, distance, reward, photo_asset_path
       )
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       returning id
     `,
     [
@@ -60,6 +72,8 @@ export async function createBleDevice(input: {
       input.location,
       input.lastSeen,
       input.bleCode,
+      input.lastSignalAt ?? new Date().toISOString(),
+      input.bleStatus ?? 'near',
       input.mapX,
       input.mapY,
       input.distance ?? null,
@@ -79,6 +93,8 @@ export async function updateBleDevice(input: {
   location: string;
   lastSeen: string;
   bleCode: string;
+  lastSignalAt?: string;
+  bleStatus?: 'near' | 'far' | 'risk' | 'disconnected' | 'lost' | 'rediscovered';
   mapX: number;
   mapY: number;
   distance?: string | null;
@@ -95,11 +111,13 @@ export async function updateBleDevice(input: {
         location = $6,
         last_seen = $7,
         ble_code = $8,
-        map_x = $9,
-        map_y = $10,
-        distance = $11,
-        reward = $12,
-        photo_asset_path = $13
+        last_signal_at = coalesce($9, last_signal_at),
+        ble_status = coalesce($10, ble_status),
+        map_x = $11,
+        map_y = $12,
+        distance = $13,
+        reward = $14,
+        photo_asset_path = $15
       where id = $1
         and user_id = $2
       returning id
@@ -113,6 +131,8 @@ export async function updateBleDevice(input: {
       input.location,
       input.lastSeen,
       input.bleCode,
+      input.lastSignalAt ?? null,
+      input.bleStatus ?? null,
       input.mapX,
       input.mapY,
       input.distance ?? null,

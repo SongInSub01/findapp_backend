@@ -26,6 +26,14 @@ set
   public_name = excluded.public_name,
   is_active = excluded.is_active;
 
+select set_config(
+  'findapp.seed_admin_user_id',
+  id::text,
+  false
+)
+from users
+where login_id = 'admin';
+
 -- 기본 시드 사용자: 앱 부트스트랩이 비어 있지 않도록 최소 데이터만 넣는다.
 insert into users (
   id, name, user_name, email, login_id, password_hash,
@@ -54,34 +62,140 @@ set
   public_name = excluded.public_name,
   is_active = excluded.is_active;
 
-insert into alert_settings (
-  user_id, distance_meters, disconnect_minutes, vibration_enabled,
-  sound_enabled, auto_approve_photos, keep_photo_private_by_default
+select set_config(
+  'findapp.seed_user_id',
+  id::text,
+  false
 )
-values (
-  '00000000-0000-0000-0000-000000000001',
-  10, 5, true, true, false, true
-)
-on conflict (user_id) do nothing;
+from users
+where email = 'insub@example.com';
 
 insert into alert_settings (
   user_id, distance_meters, disconnect_minutes, vibration_enabled,
-  sound_enabled, auto_approve_photos, keep_photo_private_by_default
+  sound_enabled, auto_approve_photos, keep_photo_private_by_default, default_reward,
+  map_theme
+)
+select current_setting('findapp.seed_admin_user_id')::uuid,
+       10, 5, true, true, false, true, 30000, 'light'
+on conflict (user_id) do update
+set
+  distance_meters = excluded.distance_meters,
+  disconnect_minutes = excluded.disconnect_minutes,
+  vibration_enabled = excluded.vibration_enabled,
+  sound_enabled = excluded.sound_enabled,
+  auto_approve_photos = excluded.auto_approve_photos,
+  keep_photo_private_by_default = excluded.keep_photo_private_by_default,
+  default_reward = excluded.default_reward,
+  map_theme = excluded.map_theme;
+
+insert into alert_settings (
+  user_id, distance_meters, disconnect_minutes, vibration_enabled,
+  sound_enabled, auto_approve_photos, keep_photo_private_by_default, default_reward,
+  map_theme
+)
+select current_setting('findapp.seed_user_id')::uuid,
+       10, 5, true, true, false, true, 50000, 'light'
+on conflict (user_id) do update
+set
+  distance_meters = excluded.distance_meters,
+  disconnect_minutes = excluded.disconnect_minutes,
+  vibration_enabled = excluded.vibration_enabled,
+  sound_enabled = excluded.sound_enabled,
+  auto_approve_photos = excluded.auto_approve_photos,
+  keep_photo_private_by_default = excluded.keep_photo_private_by_default,
+  default_reward = excluded.default_reward,
+  map_theme = excluded.map_theme;
+
+-- 연락 대상자: 현재 사용자와 실제로 채팅을 주고받는 두 번째 사용자다.
+insert into users (
+  id, name, user_name, email, login_id, password_hash,
+  initials, photo_asset_path, public_name, is_active
 )
 values (
-  '11111111-1111-1111-1111-111111111111',
-  10, 5, true, true, false, true
+  '22222222-1111-1111-1111-222222222222',
+  '이하늘',
+  '이하늘',
+  'contact@example.com',
+  'contact@example.com',
+  '4434d5c4c67c7f76dd0d2fbef1a8b347:6505f1b6283cc8c801b8f5450858e34dd08186078247bff7f5b6c15a59eb6a379b8cc1da911212c05b5a4945e1256c1318ef2bb515077d4152874a240dc71c41',
+  '이',
+  'assets/images/icon.png',
+  '이**',
+  true
 )
-on conflict (user_id) do nothing;
+on conflict (email) do update
+set
+  name = excluded.name,
+  user_name = excluded.user_name,
+  login_id = excluded.login_id,
+  password_hash = excluded.password_hash,
+  initials = excluded.initials,
+  photo_asset_path = excluded.photo_asset_path,
+  public_name = excluded.public_name,
+  is_active = excluded.is_active;
+
+select set_config(
+  'findapp.seed_contact_user_id',
+  id::text,
+  false
+)
+from users
+where email = 'contact@example.com';
+
+insert into alert_settings (
+  user_id, distance_meters, disconnect_minutes, vibration_enabled,
+  sound_enabled, auto_approve_photos, keep_photo_private_by_default, default_reward,
+  map_theme
+)
+select current_setting('findapp.seed_contact_user_id')::uuid,
+       15, 10, true, true, false, true, 70000, 'light'
+on conflict (user_id) do update
+set
+  distance_meters = excluded.distance_meters,
+  disconnect_minutes = excluded.disconnect_minutes,
+  vibration_enabled = excluded.vibration_enabled,
+  sound_enabled = excluded.sound_enabled,
+  auto_approve_photos = excluded.auto_approve_photos,
+  keep_photo_private_by_default = excluded.keep_photo_private_by_default,
+  default_reward = excluded.default_reward,
+  map_theme = excluded.map_theme;
+
+insert into current_locations (
+  user_id, latitude, longitude, accuracy_meters, updated_at
+)
+select current_setting('findapp.seed_user_id')::uuid,
+       37.5665000,
+       126.9780000,
+       12.5,
+       now()
+on conflict (user_id) do update
+set latitude = excluded.latitude,
+    longitude = excluded.longitude,
+    accuracy_meters = excluded.accuracy_meters,
+    updated_at = excluded.updated_at;
+
+insert into current_locations (
+  user_id, latitude, longitude, accuracy_meters, updated_at
+)
+select current_setting('findapp.seed_contact_user_id')::uuid,
+       37.5515000,
+       126.9880000,
+       20.0,
+       now()
+on conflict (user_id) do update
+set latitude = excluded.latitude,
+    longitude = excluded.longitude,
+    accuracy_meters = excluded.accuracy_meters,
+    updated_at = excluded.updated_at;
 
 insert into ble_devices (
   id, user_id, name, icon_key, status, location, last_seen, ble_code,
-  map_x, map_y, distance, reward, photo_asset_path
+  map_x, map_y, distance, reward, photo_asset_path, last_signal_at
 )
 values
   (
     '21111111-1111-1111-1111-111111111111',
-    '11111111-1111-1111-1111-111111111111',
+    current_setting('findapp.seed_user_id')::uuid,
     '검은색 지갑',
     'wallet',
     'safe',
@@ -92,11 +206,12 @@ values
     0.74,
     '1m',
     null,
-    'assets/images/icon.png'
+    'assets/images/icon.png',
+    now() - interval '2 minutes'
   ),
   (
     '22222222-2222-2222-2222-222222222222',
-    '11111111-1111-1111-1111-111111111111',
+    current_setting('findapp.seed_user_id')::uuid,
     '자동차 키',
     'key',
     'safe',
@@ -107,11 +222,12 @@ values
     0.68,
     '안심 구역',
     null,
-    'assets/images/icon.png'
+    'assets/images/icon.png',
+    now() - interval '30 seconds'
   ),
   (
     '23333333-3333-3333-3333-333333333333',
-    '11111111-1111-1111-1111-111111111111',
+    current_setting('findapp.seed_user_id')::uuid,
     '백팩',
     'bag',
     'lost',
@@ -122,19 +238,21 @@ values
     0.44,
     '210m',
     50000,
-    'assets/images/splash_icon.png'
+    'assets/images/splash_icon.png',
+    now() - interval '6 minutes'
   )
 on conflict (id) do nothing;
 
 insert into lost_items (
   id, owner_user_id, title, location, time_label, reward, status, photo_status,
   distance, owner_name, description, map_x, map_y, thread_id, photo_asset_path,
-  category, color, lost_at, listing_status, feature_notes, search_keywords, contact_note
+  category, color, lost_at, listing_status, feature_notes, search_keywords, contact_note,
+  source_device_id
 )
 values
   (
     '31111111-1111-1111-1111-111111111111',
-    '11111111-1111-1111-1111-111111111111',
+    current_setting('findapp.seed_user_id')::uuid,
     '갈색 가죽 지갑',
     '홍대입구역 근처',
     '20분 전',
@@ -154,16 +272,17 @@ values
     'matched',
     '카드지갑 형태, 카드 수납칸이 보이는 갈색 가죽 지갑',
     '갈색 가죽 지갑 홍대 카드지갑',
-    '습득하신 분은 앱 문의로 위치를 남겨 주세요.'
+    '습득하신 분은 앱 문의로 위치를 남겨 주세요.',
+    '21111111-1111-1111-1111-111111111111'
   ),
   (
     '32222222-2222-2222-2222-222222222222',
-    '11111111-1111-1111-1111-111111111111',
+    current_setting('findapp.seed_user_id')::uuid,
     '에어팟 프로 케이스',
     '강남구 역삼동',
     '1시간 전',
     20000,
-    'lost',
+    'contact',
     'locked',
     '1.2km',
     '이**',
@@ -178,16 +297,17 @@ values
     'open',
     '에어팟 프로 충전 케이스, 앞면에 작은 흠집이 있습니다.',
     '에어팟 프로 케이스 흰색 역삼동',
-    '카페 보관 여부를 앱으로 알려 주세요.'
+    '카페 보관 여부를 앱으로 알려 주세요.',
+    null
   ),
   (
     '33333333-3333-3333-3333-333333333333',
-    '11111111-1111-1111-1111-111111111111',
+    current_setting('findapp.seed_user_id')::uuid,
     '버건디 백팩',
     '이태원역 1번 출구',
     '2시간 전',
     100000,
-    'lost',
+    'contact',
     'locked',
     '2.5km',
     '박**',
@@ -202,16 +322,17 @@ values
     'open',
     '노트북과 서류가 들어 있는 버건디 백팩입니다.',
     '버건디 백팩 이태원 노트북',
-    '발견 시 보관 장소와 시간을 남겨 주세요.'
+    '발견 시 보관 장소와 시간을 남겨 주세요.',
+    null
   ),
   (
     '34444444-4444-4444-4444-444444444444',
-    '11111111-1111-1111-1111-111111111111',
+    current_setting('findapp.seed_user_id')::uuid,
     '삼성 갤럭시 S24',
     '용산구 한강로',
     '30분 전',
     150000,
-    'contact',
+    'lost',
     'pending',
     '800m',
     '이**',
@@ -226,13 +347,114 @@ values
     'matched',
     '검정 케이스가 씌워진 삼성 갤럭시 S24입니다.',
     '갤럭시 S24 검정 케이스 용산',
-    '화면 보호 필름 여부를 함께 알려 주세요.'
+    '화면 보호 필름 여부를 함께 알려 주세요.',
+    null
+  ),
+  (
+    '35555555-5555-5555-5555-555555555555',
+    current_setting('findapp.seed_user_id')::uuid,
+    '실버 카드지갑',
+    '신논현역 3번 출구',
+    '5분 전',
+    20000,
+    'lost',
+    'approved',
+    '140m',
+    '최**',
+    '은색 카드지갑, 교통카드와 신분증이 들어 있는 상태입니다.',
+    0.34,
+    0.56,
+    null,
+    'assets/images/icon.png',
+    '지갑',
+    '은색',
+    now() - interval '5 minutes',
+    'open',
+    '은색 메탈 카드지갑, 모서리에 작은 스크래치가 있습니다.',
+    '은색 카드지갑 신논현',
+    '확인되면 보관 위치와 사진 열람 가능 여부를 알려 주세요.',
+    null
+  ),
+  (
+    '36666666-6666-6666-6666-666666666666',
+    current_setting('findapp.seed_user_id')::uuid,
+    '검정 우산',
+    '홍대입구역 1번 출구',
+    '12분 전',
+    10000,
+    'lost',
+    'pending',
+    '90m',
+    '박**',
+    '손잡이 끝에 회색 고무가 붙은 검정 장우산입니다.',
+    0.68,
+    0.38,
+    null,
+    'assets/images/splash_icon.png',
+    '우산',
+    '검정',
+    now() - interval '12 minutes',
+    'open',
+    '검정 장우산, 손잡이 끝에 반사 스티커가 붙어 있습니다.',
+    '검정 우산 홍대입구',
+    '우산 걸이에 두셨다면 위치를 남겨 주세요.',
+    null
+  ),
+  (
+    '37777777-7777-7777-7777-777777777777',
+    current_setting('findapp.seed_user_id')::uuid,
+    '에코백',
+    '서울숲역 4번 출구',
+    '35분 전',
+    5000,
+    'safe',
+    'approved',
+    '70m',
+    '한**',
+    '아이보리색 에코백, 안에 책 두 권이 들어 있습니다.',
+    0.22,
+    0.31,
+    null,
+    'assets/images/icon.png',
+    '가방',
+    '아이보리',
+    now() - interval '35 minutes',
+    'matched',
+    '아이보리 에코백, 앞면에 작은 로고가 있습니다.',
+    '아이보리 에코백 서울숲',
+    '주인 확인되면 바로 연결해 주세요.',
+    null
+  ),
+  (
+    '38888888-8888-8888-8888-888888888888',
+    current_setting('findapp.seed_contact_user_id')::uuid,
+    '보조배터리 파우치',
+    '잠실역 6번 출구',
+    '8분 전',
+    25000,
+    'contact',
+    'approved',
+    '110m',
+    '정**',
+    '회색 파우치 안에 배터리와 케이블이 함께 들어 있습니다.',
+    0.41,
+    0.28,
+    '48888888-8888-8888-8888-888888888888',
+    'assets/images/icon.png',
+    '전자기기',
+    '회색',
+    now() - interval '8 minutes',
+    'open',
+    '회색 보조배터리 파우치, 케이블 수납 포켓이 따로 있습니다.',
+    '회색 보조배터리 파우치 잠실',
+    '발견 시 보관 위치와 사진 가능 여부를 알려 주세요.',
+    null
   )
 on conflict (id) do nothing;
 
 insert into chat_threads (
-  id, item_id, item_title, item_status, last_message, last_time, unread,
-  photo_status, other_user, reward
+  id, item_id, item_title, item_status, requester_user_id, last_message, last_time,
+  unread, photo_status, other_user, reward
 )
 values
   (
@@ -240,6 +462,7 @@ values
     '31111111-1111-1111-1111-111111111111',
     '갈색 가죽 지갑',
     'contact',
+    current_setting('findapp.seed_contact_user_id')::uuid,
     '네, 제가 해당 지역 근처에 있습니다.',
     '오후 2:30',
     2,
@@ -252,6 +475,7 @@ values
     '32222222-2222-2222-2222-222222222222',
     '에어팟 프로 케이스',
     'contact',
+    current_setting('findapp.seed_contact_user_id')::uuid,
     '사진 열람을 요청했습니다.',
     '오후 1:15',
     0,
@@ -263,13 +487,27 @@ values
     '43333333-3333-3333-3333-333333333333',
     '33333333-3333-3333-3333-333333333333',
     '버건디 백팩',
-    'lost',
+    'contact',
+    current_setting('findapp.seed_contact_user_id')::uuid,
     '안녕하세요, 혹시 가방을 보셨나요?',
     '오전 11:00',
     1,
     'locked',
     '박**',
     100000
+  ),
+  (
+    '48888888-8888-8888-8888-888888888888',
+    '38888888-8888-8888-8888-888888888888',
+    '보조배터리 파우치',
+    'contact',
+    current_setting('findapp.seed_user_id')::uuid,
+    '연락 주셔서 감사합니다. 사진 열람 가능할까요?',
+    '방금 전',
+    0,
+    'approved',
+    '정**',
+    25000
   )
 on conflict (id) do nothing;
 
@@ -282,20 +520,23 @@ values
   ('55555555-5555-5555-5555-555555555555', '42222222-2222-2222-2222-222222222222', '안녕하세요! BLE 신호가 감지되어 연락드립니다.', 'other', '오후 1:10', 'text'),
   ('56666666-6666-6666-6666-666666666666', '42222222-2222-2222-2222-222222222222', '제 에어팟 케이스를 보셨나요?', 'me', '오후 1:12', 'text'),
   ('57777777-7777-7777-7777-777777777777', '42222222-2222-2222-2222-222222222222', '사진 열람을 요청했습니다. 주인의 승인을 기다리는 중입니다.', 'system', '오후 1:15', 'photoRequest'),
-  ('58888888-8888-8888-8888-888888888888', '43333333-3333-3333-3333-333333333333', '안녕하세요, 혹시 가방을 보셨나요?', 'me', '오전 11:00', 'text')
+  ('58888888-8888-8888-8888-888888888888', '43333333-3333-3333-3333-333333333333', '안녕하세요, 혹시 가방을 보셨나요?', 'me', '오전 11:00', 'text'),
+  ('59999999-9999-9999-9999-999999999999', '48888888-8888-8888-8888-888888888888', '안녕하세요. 잠실역에서 보조배터리 파우치를 발견했습니다.', 'other', '방금 전', 'text'),
+  ('5aaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '48888888-8888-8888-8888-888888888888', '연락 주셔서 감사합니다. 사진을 먼저 확인할 수 있을까요?', 'me', '방금 전', 'text'),
+  ('5bbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '48888888-8888-8888-8888-888888888888', '사진 열람을 요청했습니다. 주인의 승인을 기다리는 중입니다.', 'system', '방금 전', 'photoRequest')
 on conflict (id) do nothing;
 
 insert into safe_zones (id, user_id, name, address, radius_meters)
 values
-  ('61111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111', '집', '서울시 강남구 역삼동', 80),
-  ('62222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', '회사', '서울시 중구 을지로', 120)
+  ('61111111-1111-1111-1111-111111111111', current_setting('findapp.seed_user_id')::uuid, '집', '서울시 강남구 역삼동', 80),
+  ('62222222-2222-2222-2222-222222222222', current_setting('findapp.seed_user_id')::uuid, '회사', '서울시 중구 을지로', 120)
 on conflict (id) do nothing;
 
 insert into notifications (id, user_id, title, body, time_label, type, is_read)
 values
-  ('71111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111', '백팩 연결 끊김 감지', '강남역 2번 출구 부근에서 마지막 BLE 신호가 확인됐습니다.', '10분 전', 'alert', false),
-  ('72222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', '사진 승인 완료', '갈색 가죽 지갑 사진을 열람할 수 있습니다.', '1시간 전', 'approval', false),
-  ('73333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', '안심 구역 진입', '자동차 키 알림이 일시 중지되었습니다.', '오늘 오전', 'info', true)
+  ('71111111-1111-1111-1111-111111111111', current_setting('findapp.seed_user_id')::uuid, '백팩 연결 끊김 감지', '강남역 2번 출구 부근에서 마지막 BLE 신호가 확인됐습니다.', '10분 전', 'alert', false),
+  ('72222222-2222-2222-2222-222222222222', current_setting('findapp.seed_user_id')::uuid, '사진 승인 완료', '갈색 가죽 지갑 사진을 열람할 수 있습니다.', '1시간 전', 'approval', false),
+  ('73333333-3333-3333-3333-333333333333', current_setting('findapp.seed_user_id')::uuid, '안심 구역 진입', '자동차 키 알림이 일시 중지되었습니다.', '오늘 오전', 'info', true)
 on conflict (id) do nothing;
 
 insert into reports (id, thread_id, target_title, reason, created_at_label, status_label)
@@ -312,14 +553,14 @@ set
   role = 'admin',
   phone_number = '010-0000-0000',
   profile_bio = '찾아줘 운영 계정입니다.'
-where id = '00000000-0000-0000-0000-000000000001';
+where login_id = 'admin';
 
 update users
 set
   role = 'user',
   phone_number = '010-1234-5678',
   profile_bio = '분실물과 습득물을 빠르게 연결해 보는 테스트 사용자입니다.'
-where id = '11111111-1111-1111-1111-111111111111';
+where email = 'insub@example.com';
 
 update lost_items
 set
@@ -376,7 +617,7 @@ insert into found_items (
 values
   (
     '91111111-1111-1111-1111-111111111111',
-    '00000000-0000-0000-0000-000000000001',
+    current_setting('findapp.seed_admin_user_id')::uuid,
     '갈색 카드지갑 보관 중',
     '지갑',
     '갈색',
@@ -391,7 +632,7 @@ values
   ),
   (
     '92222222-2222-2222-2222-222222222222',
-    '00000000-0000-0000-0000-000000000001',
+    current_setting('findapp.seed_admin_user_id')::uuid,
     '흰색 무선이어폰 케이스',
     '전자기기',
     '흰색',
@@ -406,7 +647,7 @@ values
   ),
   (
     '93333333-3333-3333-3333-333333333333',
-    '00000000-0000-0000-0000-000000000001',
+    current_setting('findapp.seed_admin_user_id')::uuid,
     '검정 스마트폰',
     '전자기기',
     '검정',
@@ -421,7 +662,7 @@ values
   ),
   (
     '94444444-4444-4444-4444-444444444444',
-    '00000000-0000-0000-0000-000000000001',
+    current_setting('findapp.seed_admin_user_id')::uuid,
     '남색 노트북 가방',
     '가방',
     '남색',
@@ -443,7 +684,7 @@ values
   (
     'a1111111-1111-1111-1111-111111111111',
     '31111111-1111-1111-1111-111111111111',
-    '11111111-1111-1111-1111-111111111111',
+    current_setting('findapp.seed_user_id')::uuid,
     'assets/images/icon.png',
     'wallet.png',
     'image/png',
@@ -452,7 +693,7 @@ values
   (
     'a2222222-2222-2222-2222-222222222222',
     '32222222-2222-2222-2222-222222222222',
-    '11111111-1111-1111-1111-111111111111',
+    current_setting('findapp.seed_user_id')::uuid,
     'assets/images/icon.png',
     'airpods.png',
     'image/png',
@@ -461,9 +702,45 @@ values
   (
     'a3333333-3333-3333-3333-333333333333',
     '34444444-4444-4444-4444-444444444444',
-    '11111111-1111-1111-1111-111111111111',
+    current_setting('findapp.seed_user_id')::uuid,
     'assets/images/splash_icon.png',
     'phone.png',
+    'image/png',
+    true
+  ),
+  (
+    'a4444444-4444-4444-4444-444444444444',
+    '35555555-5555-5555-5555-555555555555',
+    current_setting('findapp.seed_user_id')::uuid,
+    'assets/images/icon.png',
+    'wallet-silver.png',
+    'image/png',
+    true
+  ),
+  (
+    'a5555555-5555-5555-5555-555555555555',
+    '36666666-6666-6666-6666-666666666666',
+    current_setting('findapp.seed_user_id')::uuid,
+    'assets/images/splash_icon.png',
+    'umbrella-black.png',
+    'image/png',
+    true
+  ),
+  (
+    'a6666666-6666-6666-6666-666666666666',
+    '37777777-7777-7777-7777-777777777777',
+    current_setting('findapp.seed_user_id')::uuid,
+    'assets/images/icon.png',
+    'eco-bag.png',
+    'image/png',
+    true
+  ),
+  (
+    'a7777777-7777-7777-7777-777777777777',
+    '38888888-8888-8888-8888-888888888888',
+    current_setting('findapp.seed_contact_user_id')::uuid,
+    'assets/images/splash_icon.png',
+    'powerbank-pouch.png',
     'image/png',
     true
   )
@@ -476,7 +753,7 @@ values
   (
     'b1111111-1111-1111-1111-111111111111',
     '91111111-1111-1111-1111-111111111111',
-    '00000000-0000-0000-0000-000000000001',
+    current_setting('findapp.seed_admin_user_id')::uuid,
     'assets/images/icon.png',
     'found-wallet.png',
     'image/png',
@@ -485,7 +762,7 @@ values
   (
     'b2222222-2222-2222-2222-222222222222',
     '92222222-2222-2222-2222-222222222222',
-    '00000000-0000-0000-0000-000000000001',
+    current_setting('findapp.seed_admin_user_id')::uuid,
     'assets/images/icon.png',
     'found-earbuds.png',
     'image/png',
@@ -494,7 +771,7 @@ values
   (
     'b3333333-3333-3333-3333-333333333333',
     '93333333-3333-3333-3333-333333333333',
-    '00000000-0000-0000-0000-000000000001',
+    current_setting('findapp.seed_admin_user_id')::uuid,
     'assets/images/splash_icon.png',
     'found-phone.png',
     'image/png',
@@ -545,7 +822,7 @@ insert into notifications (id, user_id, title, body, time_label, type, is_read)
 values
   (
     'd1111111-1111-1111-1111-111111111111',
-    '11111111-1111-1111-1111-111111111111',
+    current_setting('findapp.seed_user_id')::uuid,
     '높은 확률의 매칭이 감지되었습니다',
     '갈색 카드지갑과 유사한 습득물이 홍대입구역 인근에 등록되었습니다.',
     '방금 전',
@@ -554,7 +831,7 @@ values
   ),
   (
     'd2222222-2222-2222-2222-222222222222',
-    '11111111-1111-1111-1111-111111111111',
+    current_setting('findapp.seed_user_id')::uuid,
     '운영팀 확인 요청',
     '검정 스마트폰 습득물에 대해 추가 특징을 확인해 주세요.',
     '10분 전',
@@ -569,7 +846,7 @@ insert into inquiries (
 values
   (
     'e1111111-1111-1111-1111-111111111111',
-    '11111111-1111-1111-1111-111111111111',
+    current_setting('findapp.seed_user_id')::uuid,
     'support',
     '에어팟 케이스 보관 위치 문의',
     '역삼동 카페 쪽 습득물이 아직 보관 중인지 확인 부탁드립니다.',
@@ -579,7 +856,7 @@ values
   ),
   (
     'e2222222-2222-2222-2222-222222222222',
-    '00000000-0000-0000-0000-000000000001',
+    current_setting('findapp.seed_admin_user_id')::uuid,
     'moderation',
     '허위 제보 점검',
     '중복 등록된 습득물 여부를 검토 중입니다.',

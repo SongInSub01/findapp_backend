@@ -14,6 +14,7 @@ DATABASE_URL=${DATABASE_URL}
 PORT=3000
 APP_NAME="찾아줘 API"
 DEFAULT_PROFILE_IMAGE_PATH=assets/images/icon.png
+DB_SEED_SCOPE=operational
 EOF
 
 echo ".env.production written to ${APP_DIR}"

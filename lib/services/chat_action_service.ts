@@ -5,6 +5,8 @@ import {
   createChatThread,
   getChatThreadById,
   getChatThreadByItemId,
+  getChatThreadByItemIdAndRequesterUserId,
+  getLegacyChatThreadByItemId,
   updateChatThread,
 } from '@/lib/repositories/chat_data';
 import {
@@ -22,8 +24,11 @@ export async function openOrCreateChatThread(input: {
   email?: string;
   itemId: string;
 }) {
-  await requireRequestedUser(input, 'No user found for chat open.');
-  const existing = await getChatThreadByItemId(input.itemId);
+  const requester = await requireRequestedUser(input, 'No user found for chat open.');
+  const existing = await getChatThreadByItemIdAndRequesterUserId(
+    input.itemId,
+    requester.id,
+  );
 
   if (existing) {
     return existing.id;
@@ -34,11 +39,17 @@ export async function openOrCreateChatThread(input: {
     throw new Error('Lost item not found.');
   }
 
+  const legacyThread = await getLegacyChatThreadByItemId(input.itemId);
+  if (legacyThread) {
+    return legacyThread.id;
+  }
+
   const timeLabel = formatTimeLabel();
   const created = await createChatThread({
     itemId: item.id,
     itemTitle: item.title,
     itemStatus: 'contact',
+    requesterUserId: requester.id,
     lastMessage: firstContactMessage,
     lastTime: timeLabel,
     unread: 0,

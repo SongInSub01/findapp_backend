@@ -1,9 +1,11 @@
 // Flutter 앱과 백엔드가 주고받는 DTO 계약 정의 모음이다.
 export type ItemStatus = 'safe' | 'lost' | 'contact';
+export type BleSignalStatus = 'near' | 'far' | 'risk' | 'disconnected' | 'lost' | 'rediscovered';
 export type PhotoAccessStatus = 'locked' | 'pending' | 'approved';
 export type ChatSender = 'me' | 'other' | 'system';
 export type ChatMessageType = 'text' | 'photoRequest' | 'photoApproved' | 'report';
 export type NotificationType = 'alert' | 'approval' | 'info' | 'report';
+export type MapThemeMode = 'dark' | 'light';
 export type ListingType = 'lost' | 'found';
 export type ListingWorkflowStatus = 'open' | 'matched' | 'resolved' | 'archived';
 export type MatchStatus = 'suggested' | 'reviewing' | 'confirmed' | 'dismissed';
@@ -27,12 +29,27 @@ export interface BleDeviceDto {
   status: ItemStatus;
   location: string;
   lastSeen: string;
+  lastSignalAt: string;
+  bleStatus: BleSignalStatus;
   bleCode: string;
   mapX: number;
   mapY: number;
   distance: string | null;
   reward: number | null;
   photoAssetPath: string | null;
+  lastRssi: number | null;
+  lastDetectedLatitude: number | null;
+  lastDetectedLongitude: number | null;
+  lastDetectedAccuracyMeters: number | null;
+  focusedScanUntil: string | null;
+  rediscoveredAt: string | null;
+}
+
+export interface CurrentLocationDto {
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number | null;
+  updatedAt: string;
 }
 
 export interface LostItemDto {
@@ -46,6 +63,7 @@ export interface LostItemDto {
   distance: string;
   ownerName: string;
   description: string;
+  sourceDeviceId: string | null;
   mapX: number;
   mapY: number;
   threadId: string | null;
@@ -88,6 +106,8 @@ export interface AlertSettingsDto {
   soundEnabled: boolean;
   autoApprovePhotos: boolean;
   keepPhotoPrivateByDefault: boolean;
+  defaultReward: number;
+  mapTheme: MapThemeMode;
 }
 
 export interface NotificationDto {
@@ -111,6 +131,7 @@ export interface AppBootstrapDto {
   userProfile: UserProfileDto;
   myDevices: BleDeviceDto[];
   lostItems: LostItemDto[];
+  currentLocation: CurrentLocationDto | null;
   chatThreads: ChatThreadDto[];
   safeZones: SafeZoneDto[];
   alertSettings: AlertSettingsDto;
@@ -196,6 +217,7 @@ export interface FinderBootstrapDto {
   userProfile: FinderUserProfileDto;
   myDevices: BleDeviceDto[];
   lostItems: LostItemDto[];
+  currentLocation: CurrentLocationDto | null;
   chatThreads: ChatThreadDto[];
   safeZones: SafeZoneDto[];
   alertSettings: AlertSettingsDto;

@@ -50,8 +50,13 @@ create table if not exists alert_settings (
   sound_enabled boolean not null,
   auto_approve_photos boolean not null,
   keep_photo_private_by_default boolean not null,
+  default_reward integer not null default 30000,
+  map_theme text not null default 'dark',
   created_at timestamptz not null default now()
 );
+
+alter table alert_settings add column if not exists default_reward integer not null default 30000;
+alter table alert_settings add column if not exists map_theme text not null default 'dark';
 
 -- ble_devices: 사용자가 등록한 BLE 센서 연결 물건 목록
 create table if not exists ble_devices (
@@ -68,8 +73,18 @@ create table if not exists ble_devices (
   distance text,
   reward integer,
   photo_asset_path text,
+  last_signal_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );
+
+alter table ble_devices add column if not exists last_signal_at timestamptz not null default now();
+alter table ble_devices add column if not exists ble_status text not null default 'near';
+alter table ble_devices add column if not exists last_rssi integer;
+alter table ble_devices add column if not exists last_detected_latitude numeric(10, 7);
+alter table ble_devices add column if not exists last_detected_longitude numeric(10, 7);
+alter table ble_devices add column if not exists last_detected_accuracy_meters numeric(6, 2);
+alter table ble_devices add column if not exists focused_scan_until timestamptz;
+alter table ble_devices add column if not exists rediscovered_at timestamptz;
 
 -- lost_items: 주변 탐색과 채팅 진입에 노출되는 분실물 목록
 create table if not exists lost_items (
@@ -88,7 +103,18 @@ create table if not exists lost_items (
   map_y numeric(6, 4) not null,
   thread_id uuid,
   photo_asset_path text,
+  source_device_id uuid references ble_devices(id) on delete set null,
   created_at timestamptz not null default now()
+);
+
+alter table lost_items add column if not exists source_device_id uuid references ble_devices(id) on delete set null;
+
+create table if not exists current_locations (
+  user_id uuid primary key references users(id) on delete cascade,
+  latitude numeric(10, 7) not null,
+  longitude numeric(10, 7) not null,
+  accuracy_meters numeric(6, 2),
+  updated_at timestamptz not null default now()
 );
 
 -- chat_threads: 분실물별 대화방 요약 정보
@@ -105,6 +131,10 @@ create table if not exists chat_threads (
   reward integer,
   created_at timestamptz not null default now()
 );
+
+alter table chat_threads add column if not exists requester_user_id uuid references users(id) on delete set null;
+
+create index if not exists chat_threads_requester_user_id_idx on chat_threads(requester_user_id);
 
 -- chat_messages: 각 대화방 안의 실제 메시지 목록
 create table if not exists chat_messages (

@@ -158,9 +158,10 @@ export async function ensureDefaultAlertSettings(userId: string) {
     `
       insert into alert_settings (
         user_id, distance_meters, disconnect_minutes, vibration_enabled,
-        sound_enabled, auto_approve_photos, keep_photo_private_by_default
+        sound_enabled, auto_approve_photos, keep_photo_private_by_default,
+        default_reward, map_theme
       )
-      values ($1, 10, 5, true, true, false, true)
+      values ($1, 10, 5, true, true, false, true, 30000, 'dark')
       on conflict (user_id) do nothing
     `,
     [userId],

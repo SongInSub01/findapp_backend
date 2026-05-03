@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "db:check": "tsx scripts/check-db.ts",
+    "db:roundtrip": "tsx scripts/verify-db-roundtrip.ts",
     "db:setup": "tsx scripts/setup-db.ts",
     "db:seed": "tsx scripts/seed-db.ts",
     "db:cleanup:ops": "tsx scripts/cleanup-operational.ts"

@@ -16,6 +16,8 @@ const updateAlertSettingsSchema = z.object({
   soundEnabled: z.boolean(),
   autoApprovePhotos: z.boolean(),
   keepPhotoPrivateByDefault: z.boolean(),
+  defaultReward: z.number().int().positive(),
+  mapTheme: z.enum(['dark', 'light']),
 });
 
 export async function GET(request: NextRequest) {

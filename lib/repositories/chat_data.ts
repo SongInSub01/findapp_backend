@@ -1,7 +1,7 @@
 // 채팅 스레드와 메시지 저장/조회 SQL을 담당하는 저장소다.
 import { query } from '@/lib/db/query';
 
-// 채팅 스레드와 메시지는 분실물 소유자 기준으로 묶어 읽는다.
+// 채팅 스레드와 메시지는 분실물 소유자와 요청자 기준으로 묶어 읽는다.
 async function listMessagesForThreads(threadIds: readonly string[]) {
   if (threadIds.length == 0) {
     return new Map<string, Array<{
@@ -54,13 +54,24 @@ export async function listChatThreadsForUser(userId: string) {
     reward: number | null;
   }>(
     `
-      select chat_threads.id, chat_threads.item_id, chat_threads.item_title,
-             chat_threads.item_status, chat_threads.last_message, chat_threads.last_time,
-             chat_threads.unread, chat_threads.photo_status, chat_threads.other_user,
+      select chat_threads.id,
+             chat_threads.item_id,
+             chat_threads.item_title,
+             chat_threads.item_status,
+             chat_threads.last_message,
+             chat_threads.last_time,
+             chat_threads.unread,
+             chat_threads.photo_status,
+             case
+               when chat_threads.requester_user_id = $1 then lost_items.owner_name
+               else coalesce(requester_user.public_name, lost_items.owner_name)
+             end as other_user,
              chat_threads.reward
       from chat_threads
       inner join lost_items on lost_items.id = chat_threads.item_id
+      left join users requester_user on requester_user.id = chat_threads.requester_user_id
       where lost_items.owner_user_id = $1
+         or chat_threads.requester_user_id = $1
       order by chat_threads.created_at desc
     `,
     [userId],
@@ -114,10 +125,42 @@ export async function getChatThreadByItemId(itemId: string) {
   return result.rows[0] ?? null;
 }
 
+export async function getChatThreadByItemIdAndRequesterUserId(
+  itemId: string,
+  requesterUserId: string,
+) {
+  const result = await query<{ id: string }>(
+    `
+      select id
+      from chat_threads
+      where item_id = $1
+        and requester_user_id = $2
+      limit 1
+    `,
+    [itemId, requesterUserId],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function getLegacyChatThreadByItemId(itemId: string) {
+  const result = await query<{ id: string }>(
+    `
+      select id
+      from chat_threads
+      where item_id = $1
+        and requester_user_id is null
+      limit 1
+    `,
+    [itemId],
+  );
+  return result.rows[0] ?? null;
+}
+
 export async function createChatThread(input: {
   itemId: string;
   itemTitle: string;
   itemStatus: 'safe' | 'lost' | 'contact';
+  requesterUserId: string;
   lastMessage: string;
   lastTime: string;
   unread: number;
@@ -128,16 +171,17 @@ export async function createChatThread(input: {
   const result = await query<{ id: string }>(
     `
       insert into chat_threads (
-        item_id, item_title, item_status, last_message, last_time,
-        unread, photo_status, other_user, reward
+        item_id, item_title, item_status, requester_user_id,
+        last_message, last_time, unread, photo_status, other_user, reward
       )
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       returning id
     `,
     [
       input.itemId,
       input.itemTitle,
       input.itemStatus,
+      input.requesterUserId,
       input.lastMessage,
       input.lastTime,
       input.unread,

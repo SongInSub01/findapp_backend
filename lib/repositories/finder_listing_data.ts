@@ -53,6 +53,7 @@ export interface LegacyLostItemRow {
   map_y: number;
   thread_id: string | null;
   photo_asset_path: string | null;
+  source_device_id: string | null;
 }
 
 export interface LegacyLostItemChatRow {
@@ -64,6 +65,25 @@ export interface LegacyLostItemChatRow {
   photo_status: 'locked' | 'pending' | 'approved';
   owner_name: string;
   thread_id: string | null;
+}
+
+export interface AutoLostItemInput {
+  ownerUserId: string;
+  ownerName: string;
+  title: string;
+  location: string;
+  timeLabel: string;
+  lostAt: string;
+  reward: number;
+  status: 'safe' | 'lost' | 'contact';
+  photoStatus: 'locked' | 'pending' | 'approved';
+  distance: string;
+  description: string;
+  mapX: number;
+  mapY: number;
+  photoAssetPath: string | null;
+  sourceDeviceId: string;
+  listingStatus?: 'open' | 'matched' | 'resolved' | 'archived';
 }
 
 function pushCommonFilters(
@@ -339,7 +359,8 @@ export async function listLegacyLostItems() {
   const result = await query<LegacyLostItemRow>(
     `
       select id, title, location, time_label, reward, status, photo_status, distance,
-             owner_name, description, map_x, map_y, thread_id, photo_asset_path
+             owner_name, description, map_x, map_y, thread_id, photo_asset_path,
+             source_device_id
       from lost_items
       order by created_at desc
     `,
@@ -358,6 +379,154 @@ export async function getLegacyLostItemById(itemId: string) {
     [itemId],
   );
   return result.rows[0] ?? null;
+}
+
+export async function findLostItemBySourceDeviceId(sourceDeviceId: string) {
+  const result = await query<LegacyLostItemRow>(
+    `
+      select id, title, location, time_label, reward, status, photo_status, distance,
+             owner_name, description, map_x, map_y, thread_id, photo_asset_path,
+             source_device_id
+      from lost_items
+      where source_device_id = $1
+      limit 1
+    `,
+    [sourceDeviceId],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function upsertLostItemFromDevice(input: AutoLostItemInput) {
+  const category = inferCategoryFromTitle(input.title);
+  const color = inferColorFromTitle(input.title);
+  const featureNotes = input.description.trim();
+  const searchKeywords = [
+    input.title,
+    category,
+    color,
+    input.location,
+    input.description,
+  ]
+    .filter((value) => value.trim().length > 0)
+    .join(' ');
+  const contactNote = '앱 내 문의 기능으로 연락해 주세요.';
+  const existing = await findLostItemBySourceDeviceId(input.sourceDeviceId);
+  if (existing) {
+    const result = await query<{ id: string }>(
+      `
+        update lost_items
+        set
+          owner_user_id = $2,
+          title = $3,
+          location = $4,
+          time_label = $5,
+          reward = $6,
+          status = $7,
+          photo_status = $8,
+          distance = $9,
+          owner_name = $10,
+          description = $11,
+          map_x = $12,
+          map_y = $13,
+          photo_asset_path = $14,
+          category = $15,
+          color = $16,
+          lost_at = $17::timestamptz,
+          listing_status = $18,
+          feature_notes = $19,
+          search_keywords = $20,
+          contact_note = $21,
+          source_device_id = $22,
+          updated_at = now()
+        where id = $1
+        returning id
+      `,
+      [
+        existing.id,
+        input.ownerUserId,
+        input.title,
+        input.location,
+        input.timeLabel,
+        input.reward,
+        input.status,
+        input.photoStatus,
+        input.distance,
+        input.ownerName,
+        input.description,
+        input.mapX,
+        input.mapY,
+        input.photoAssetPath,
+        category,
+        color,
+        input.lostAt,
+        input.listingStatus ?? 'open',
+        featureNotes,
+        searchKeywords,
+        contactNote,
+        input.sourceDeviceId,
+      ],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  const result = await query<{ id: string }>(
+    `
+      insert into lost_items (
+        owner_user_id, title, location, time_label, reward, status, photo_status, distance,
+        owner_name, description, map_x, map_y, photo_asset_path, category, color, lost_at,
+        listing_status, feature_notes, search_keywords, contact_note, source_device_id,
+        created_at, updated_at
+      )
+      values (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::timestamptz,
+        $17, $18, $19, $20, $21, now(), now()
+      )
+      returning id
+    `,
+    [
+      input.ownerUserId,
+      input.title,
+      input.location,
+      input.timeLabel,
+      input.reward,
+      input.status,
+      input.photoStatus,
+      input.distance,
+      input.ownerName,
+      input.description,
+      input.mapX,
+      input.mapY,
+      input.photoAssetPath,
+      category,
+      color,
+      input.lostAt,
+      input.listingStatus ?? 'open',
+      featureNotes,
+      searchKeywords,
+      contactNote,
+      input.sourceDeviceId,
+    ],
+  );
+  return result.rows[0] ?? null;
+}
+
+function inferCategoryFromTitle(title: string) {
+  if (title.includes('지갑')) return '지갑';
+  if (title.includes('에어팟')) return '전자기기';
+  if (title.includes('백팩') || title.includes('가방')) return '가방';
+  if (title.includes('휴대폰') || title.includes('갤럭시') || title.includes('태블릿')) {
+    return '전자기기';
+  }
+  return '기타';
+}
+
+function inferColorFromTitle(title: string) {
+  if (title.includes('갈색')) return '갈색';
+  if (title.includes('버건디')) return '버건디';
+  if (title.includes('검정')) return '검정';
+  if (title.includes('흰색')) return '흰색';
+  if (title.includes('파랑')) return '파랑';
+  return '미상';
 }
 
 export async function listLostItemImages(itemId: string) {

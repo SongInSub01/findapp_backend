@@ -27,10 +27,13 @@ export async function getAlertSettings(userId: string) {
     sound_enabled: boolean;
     auto_approve_photos: boolean;
     keep_photo_private_by_default: boolean;
+    default_reward: number;
+    map_theme: 'dark' | 'light';
   }>(
     `
       select distance_meters, disconnect_minutes, vibration_enabled,
-             sound_enabled, auto_approve_photos, keep_photo_private_by_default
+             sound_enabled, auto_approve_photos, keep_photo_private_by_default,
+             default_reward, map_theme
       from alert_settings
       where user_id = $1
       limit 1
@@ -48,21 +51,26 @@ export async function upsertAlertSettings(input: {
   soundEnabled: boolean;
   autoApprovePhotos: boolean;
   keepPhotoPrivateByDefault: boolean;
+  defaultReward: number;
+  mapTheme: 'dark' | 'light';
 }) {
   await query(
     `
       insert into alert_settings (
         user_id, distance_meters, disconnect_minutes, vibration_enabled,
-        sound_enabled, auto_approve_photos, keep_photo_private_by_default
+        sound_enabled, auto_approve_photos, keep_photo_private_by_default,
+        default_reward, map_theme
       )
-      values ($1,$2,$3,$4,$5,$6,$7)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       on conflict (user_id) do update
       set distance_meters = excluded.distance_meters,
           disconnect_minutes = excluded.disconnect_minutes,
           vibration_enabled = excluded.vibration_enabled,
           sound_enabled = excluded.sound_enabled,
           auto_approve_photos = excluded.auto_approve_photos,
-          keep_photo_private_by_default = excluded.keep_photo_private_by_default
+          keep_photo_private_by_default = excluded.keep_photo_private_by_default,
+          default_reward = excluded.default_reward,
+          map_theme = excluded.map_theme
     `,
     [
       input.userId,
@@ -72,6 +80,8 @@ export async function upsertAlertSettings(input: {
       input.soundEnabled,
       input.autoApprovePhotos,
       input.keepPhotoPrivateByDefault,
+      input.defaultReward,
+      input.mapTheme,
     ],
   );
 }

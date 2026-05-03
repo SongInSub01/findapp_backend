@@ -19,9 +19,11 @@ Flutter 앱 `찾아줘`를 위한 Next.js + PostgreSQL 백엔드입니다.
 2. `DATABASE_URL`에 PostgreSQL 접속 문자열 입력
 3. `npm install`
 4. `npm run db:setup`
-5. `npm run db:seed`
-6. `npm run db:check`
-7. `npm run dev`
+5. `npm run db:check`
+6. `npm run dev`
+
+`npm run db:seed`는 운영 DB 전용입니다.
+`NODE_ENV=production`과 `DB_SEED_SCOPE=operational`이 둘 다 잡힌 배포 환경에서만 실행됩니다.
 
 운영 서버에 남은 테스트 계정/분실물/신고 흔적을 정리해야 할 때는
 `npm run db:cleanup:ops`를 실행하면 됩니다.

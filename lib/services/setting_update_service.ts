@@ -17,6 +17,8 @@ export async function saveAlertSettingValues(input: {
   soundEnabled: boolean;
   autoApprovePhotos: boolean;
   keepPhotoPrivateByDefault: boolean;
+  defaultReward: number;
+  mapTheme: 'dark' | 'light';
 }) {
   const user = await requireRequestedUser(input, 'No user found for alert settings.');
   await upsertAlertSettings({
@@ -27,11 +29,13 @@ export async function saveAlertSettingValues(input: {
     soundEnabled: input.soundEnabled,
     autoApprovePhotos: input.autoApprovePhotos,
     keepPhotoPrivateByDefault: input.keepPhotoPrivateByDefault,
+    defaultReward: input.defaultReward,
+    mapTheme: input.mapTheme,
   });
   await createNotification({
     userId: user.id,
     title: '설정 저장 완료',
-    body: '거리, 시간, 사진 보호 설정이 서버에 저장되었습니다.',
+    body: '거리, 시간, 사진 보호, 지도 테마, 기본 사례금 설정이 서버에 저장되었습니다.',
     timeLabel: nowLabel(),
     type: 'info',
   });
