@@ -13,3 +13,5 @@ tsconfig.tsbuildinfo
 
 .vscode/
 .idea/
+
+_frontend_inspect/

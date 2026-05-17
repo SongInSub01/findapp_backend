@@ -22,6 +22,7 @@ import {
   saveAlertSettingValues,
   saveSafeZoneValues,
 } from '../lib/services/setting_update_service';
+import { claimRewardQuestForUser } from '../lib/services/reward_service';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -35,6 +36,7 @@ async function scalar<T extends Record<string, unknown>>(sql: string, values: un
 }
 
 async function main() {
+  // 실제 API 서비스 흐름처럼 사용자 생성부터 좌표 저장, 채팅, 조회까지 한 번에 검증한다.
   const runId = `rt-${Date.now()}`;
   const email = `${runId}@roundtrip.findapp.local`;
   const password = `roundtrip-${runId}`;
@@ -182,6 +184,45 @@ async function main() {
     reason: `${titleSeed} 신고 사유`,
   });
 
+  const peerEmail = `${runId}.peer@roundtrip.findapp.local`;
+  const peerPassword = `roundtrip-peer-${runId}`;
+  await registerUser({
+    userName: `Peer ${runId}`,
+    email: peerEmail,
+    password: peerPassword,
+  });
+  const peerThreadId = await openOrCreateChatThread({
+    loginId: peerEmail,
+    itemId: lostDetail.id,
+  });
+  const peerText = `${runId} peer chat message`;
+  await saveChatMessage({
+    loginId: peerEmail,
+    threadId: peerThreadId,
+    text: peerText,
+  });
+
+  const ownerChatCheck = await getFinderBootstrap({ loginId: email });
+  const peerChatCheck = await getFinderBootstrap({ loginId: peerEmail });
+  const ownerPeerThread = ownerChatCheck.chatThreads.find(
+    (thread) => thread.id === peerThreadId,
+  );
+  const peerThread = peerChatCheck.chatThreads.find(
+    (thread) => thread.id === peerThreadId,
+  );
+  assert(
+    ownerPeerThread?.messages.some(
+      (message) => message.text === peerText && message.sender === 'other',
+    ),
+    'owner did not see peer chat message as other',
+  );
+  assert(
+    peerThread?.messages.some(
+      (message) => message.text === peerText && message.sender === 'me',
+    ),
+    'peer did not see own chat message as me',
+  );
+
   await submitFinderInquiry({
     loginId: email,
     category: 'support',
@@ -200,6 +241,21 @@ async function main() {
   assert(bootstrap.safeZones.some((zone) => zone.name.includes(runId)), 'bootstrap safe zone missing');
   assert(bootstrap.inquiries.some((inquiry) => inquiry.title.includes(runId)), 'bootstrap inquiry missing');
   assert(bootstrap.currentLocation?.latitude === 37.5665, 'bootstrap current location missing');
+  assert(
+    bootstrap.rewardStatus.quests.some(
+      (quest) => quest.code === 'found_item_register' && quest.completed,
+    ),
+    'bootstrap reward quest missing or incomplete',
+  );
+
+  const claimedRewardStatus = await claimRewardQuestForUser({
+    loginId: email,
+    questCode: 'found_item_register',
+  });
+  assert(
+    claimedRewardStatus.currentPoints >= 90,
+    'reward points were not added after quest claim',
+  );
 
   const counts = await scalar<{
     users: string;
@@ -209,6 +265,8 @@ async function main() {
     chat_messages: string;
     reports: string;
     inquiries: string;
+    reward_accounts: string;
+    reward_quests: string;
   }>(
     `
       select
@@ -218,7 +276,9 @@ async function main() {
         (select count(*) from found_items where reporter_user_id = $2)::text as found_items,
         (select count(*) from chat_messages where thread_id = $3)::text as chat_messages,
         (select count(*) from reports where reason like $4)::text as reports,
-        (select count(*) from inquiries where user_id = $2)::text as inquiries
+        (select count(*) from inquiries where user_id = $2)::text as inquiries,
+        (select count(*) from reward_accounts where user_id = $2)::text as reward_accounts,
+        (select count(*) from reward_quests where user_id = $2)::text as reward_quests
     `,
     [email, user.id, threadId, `%${runId}%`],
   );
@@ -230,6 +290,8 @@ async function main() {
   assert(Number(counts.chat_messages) >= 4, 'DB chat message count mismatch');
   assert(Number(counts.reports) >= 1, 'DB report count mismatch');
   assert(Number(counts.inquiries) >= 1, 'DB inquiry count mismatch');
+  assert(Number(counts.reward_accounts) >= 1, 'DB reward account count mismatch');
+  assert(Number(counts.reward_quests) >= 3, 'DB reward quest count mismatch');
 
   console.log(JSON.stringify({
     ok: true,
@@ -238,6 +300,7 @@ async function main() {
     lostItemId: lostDetail.id,
     foundItemId: foundDetail.id,
     threadId,
+    peerThreadId,
     checkedTables: [
       'users',
       'alert_settings',
@@ -253,6 +316,11 @@ async function main() {
       'reports',
       'inquiries',
       'notifications',
+      'reward_accounts',
+      'reward_quests',
+      'reward_shop_items',
+      'reward_purchases',
+      'reward_point_events',
     ],
   }, null, 2));
 }

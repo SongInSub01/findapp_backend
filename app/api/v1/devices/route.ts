@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { createBleDevice, listBleDevices } from '@/lib/repositories/device_data';
 import { requireRequestedUser } from '@/lib/services/user_lookup_service';
 
+// 앱에서 보낸 BLE 기기 등록 값을 검증하고, 중복 BLE 코드는 DB 제약 조건으로 막는다.
 const createDeviceSchema = z.object({
   name: z.string().min(1),
   iconKey: z.string().min(1),
@@ -23,6 +24,53 @@ const createDeviceSchema = z.object({
   loginId: z.string().min(1).optional(),
 });
 
+// DB의 snake_case BLE 기기 값을 앱이 쓰는 camelCase 응답으로 변환한다.
+function toBleDeviceDto(row: {
+  id: string;
+  name: string;
+  icon_key: string;
+  status: 'safe' | 'lost' | 'contact';
+  location: string;
+  last_seen: string;
+  ble_code: string;
+  last_signal_at: string;
+  ble_status: 'near' | 'far' | 'risk' | 'disconnected' | 'lost' | 'rediscovered';
+  map_x: number;
+  map_y: number;
+  distance: string | null;
+  reward: number | null;
+  photo_asset_path: string | null;
+  last_rssi: number | null;
+  last_detected_latitude: number | null;
+  last_detected_longitude: number | null;
+  last_detected_accuracy_meters: number | null;
+  focused_scan_until: string | null;
+  rediscovered_at: string | null;
+}) {
+  return {
+    id: row.id,
+    name: row.name,
+    iconKey: row.icon_key,
+    status: row.status,
+    location: row.location,
+    lastSeen: row.last_seen,
+    bleCode: row.ble_code,
+    lastSignalAt: row.last_signal_at,
+    bleStatus: row.ble_status,
+    mapX: Number(row.map_x),
+    mapY: Number(row.map_y),
+    distance: row.distance,
+    reward: row.reward,
+    photoAssetPath: row.photo_asset_path,
+    lastRssi: row.last_rssi == null ? null : Number(row.last_rssi),
+    lastDetectedLatitude: row.last_detected_latitude == null ? null : Number(row.last_detected_latitude),
+    lastDetectedLongitude: row.last_detected_longitude == null ? null : Number(row.last_detected_longitude),
+    lastDetectedAccuracyMeters: row.last_detected_accuracy_meters == null ? null : Number(row.last_detected_accuracy_meters),
+    focusedScanUntil: row.focused_scan_until,
+    rediscoveredAt: row.rediscovered_at,
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const email = request.nextUrl.searchParams.get('email') ?? undefined;
@@ -32,7 +80,7 @@ export async function GET(request: NextRequest) {
       'No user found for device registration.',
     );
     const devices = await listBleDevices(user.id);
-    return NextResponse.json(devices);
+    return NextResponse.json(devices.map(toBleDeviceDto));
   } catch (error) {
     return NextResponse.json(
       { message: error instanceof Error ? error.message : 'Failed to load devices' },

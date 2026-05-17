@@ -7,6 +7,7 @@ import {
   searchFinderListings,
 } from '@/lib/services/finder_app_service';
 
+// 습득물 등록 요청에서 위치 좌표까지 함께 검증한다.
 const foundItemSchema = z.object({
   loginId: z.string().min(1, '로그인 아이디가 필요합니다.'),
   title: z.string().min(1, '습득물 이름을 입력해 주세요.'),
@@ -14,6 +15,9 @@ const foundItemSchema = z.object({
   color: z.string().min(1, '색상을 입력해 주세요.'),
   location: z.string().min(1, '습득 위치를 입력해 주세요.'),
   happenedAt: z.string().min(1, '습득 시간을 입력해 주세요.'),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
+  accuracyMeters: z.number().nonnegative().nullable().optional(),
   listingStatus: z.enum(['open', 'matched', 'resolved', 'archived']).default('open'),
   description: z.string().min(1, '설명을 입력해 주세요.'),
   featureNotes: z.string().min(1, '특징을 입력해 주세요.'),

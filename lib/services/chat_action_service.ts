@@ -4,7 +4,6 @@ import {
   createChatMessage,
   createChatThread,
   getChatThreadById,
-  getChatThreadByItemId,
   getChatThreadByItemIdAndRequesterUserId,
   getLegacyChatThreadByItemId,
   updateChatThread,
@@ -19,6 +18,35 @@ import { formatTimeLabel, nowLabel } from '@/lib/utils/time_label';
 
 const firstContactMessage = '안녕하세요, 분실물 BLE 신호가 감지되어 연락드립니다.';
 
+type ChatThreadAccessRow = {
+  owner_user_id: string;
+  requester_user_id: string | null;
+};
+
+// 채팅방 소유자나 요청자가 아닌 사용자의 접근을 차단한다.
+function ensureThreadParticipant(userId: string, thread: ChatThreadAccessRow) {
+  if (thread.owner_user_id !== userId && thread.requester_user_id !== userId) {
+    throw new Error('User is not a participant of this chat thread.');
+  }
+}
+
+// 알림을 보낼 상대방 사용자를 계산한다.
+function otherParticipantId(thread: ChatThreadAccessRow, actorUserId: string) {
+  if (thread.owner_user_id !== actorUserId) {
+    return thread.owner_user_id;
+  }
+  if (thread.requester_user_id && thread.requester_user_id !== actorUserId) {
+    return thread.requester_user_id;
+  }
+  return null;
+}
+
+// 상대방이 있는 경우에만 읽지 않은 메시지 수를 올린다.
+function unreadForOtherParticipant(thread: ChatThreadAccessRow, actorUserId: string) {
+  return otherParticipantId(thread, actorUserId) ? 1 : 0;
+}
+
+// 분실물 기준으로 사용자별 채팅방을 열거나 새로 만든다.
 export async function openOrCreateChatThread(input: {
   loginId?: string;
   email?: string;
@@ -52,10 +80,11 @@ export async function openOrCreateChatThread(input: {
     requesterUserId: requester.id,
     lastMessage: firstContactMessage,
     lastTime: timeLabel,
-    unread: 0,
+    unread: item.owner_user_id === requester.id ? 0 : 1,
     photoStatus: item.photo_status,
     otherUser: item.owner_name,
     reward: item.reward,
+    lastSenderUserId: requester.id,
   });
 
   if (!created) {
@@ -66,6 +95,7 @@ export async function openOrCreateChatThread(input: {
     threadId: created.id,
     text: firstContactMessage,
     sender: 'me',
+    senderUserId: requester.id,
     timeLabel,
     type: 'text',
   });
@@ -76,6 +106,7 @@ export async function openOrCreateChatThread(input: {
     threadId: created.id,
   });
 
+  if (item.owner_user_id !== requester.id) {
   await createNotification({
     userId: item.owner_user_id,
     title: '새 채팅이 시작되었습니다.',
@@ -83,27 +114,31 @@ export async function openOrCreateChatThread(input: {
     timeLabel: nowLabel(),
     type: 'info',
   });
+  }
 
   return created.id;
 }
 
+// 참여자가 보낸 채팅 메시지를 저장하고 채팅방 요약을 갱신한다.
 export async function saveChatMessage(input: {
   loginId?: string;
   email?: string;
   threadId: string;
   text: string;
 }) {
-  await requireRequestedUser(input, 'No user found for message send.');
+  const requester = await requireRequestedUser(input, 'No user found for message send.');
   const thread = await getChatThreadById(input.threadId);
   if (!thread) {
     throw new Error('Chat thread not found.');
   }
+  ensureThreadParticipant(requester.id, thread);
 
   const timeLabel = formatTimeLabel();
   await createChatMessage({
     threadId: input.threadId,
     text: input.text,
     sender: 'me',
+    senderUserId: requester.id,
     timeLabel,
     type: 'text',
   });
@@ -113,6 +148,8 @@ export async function saveChatMessage(input: {
     itemStatus: 'contact',
     lastMessage: input.text,
     lastTime: timeLabel,
+    unread: unreadForOtherParticipant(thread, requester.id),
+    lastSenderUserId: requester.id,
   });
 
   await updateLegacyLostItemChatState({
@@ -126,13 +163,19 @@ export async function markThreadAsRead(input: {
   email?: string;
   threadId: string;
 }) {
-  await requireRequestedUser(input, 'No user found for read update.');
+  const requester = await requireRequestedUser(input, 'No user found for read update.');
+  const thread = await getChatThreadById(input.threadId);
+  if (!thread) {
+    throw new Error('Chat thread not found.');
+  }
+  ensureThreadParticipant(requester.id, thread);
   await updateChatThread({
     threadId: input.threadId,
     unread: 0,
   });
 }
 
+// 사진 열람 요청을 저장하고, 설정에 따라 자동 승인 여부를 처리한다.
 export async function requestPhotoForThread(input: {
   loginId?: string;
   email?: string;
@@ -143,6 +186,7 @@ export async function requestPhotoForThread(input: {
   if (!thread) {
     throw new Error('Chat thread not found.');
   }
+  ensureThreadParticipant(requester.id, thread);
 
   const item = await getLegacyLostItemById(thread.item_id);
   if (!item) {
@@ -163,6 +207,7 @@ export async function requestPhotoForThread(input: {
     threadId: input.threadId,
     text: nextMessage,
     sender: 'system',
+    senderUserId: requester.id,
     timeLabel,
     type: nextType,
   });
@@ -173,6 +218,8 @@ export async function requestPhotoForThread(input: {
     photoStatus: nextPhotoStatus,
     lastMessage: nextMessage,
     lastTime: timeLabel,
+    unread: unreadForOtherParticipant(thread, requester.id),
+    lastSenderUserId: requester.id,
   });
 
   await updateLegacyLostItemChatState({
@@ -181,8 +228,12 @@ export async function requestPhotoForThread(input: {
     photoStatus: nextPhotoStatus,
   });
 
-  await createNotification({
-    userId: requester.id,
+  const notificationUserId = autoApprove
+    ? requester.id
+    : otherParticipantId(thread, requester.id);
+  if (notificationUserId) {
+    await createNotification({
+    userId: notificationUserId,
     title: autoApprove ? '사진 승인 완료' : '사진 승인 대기',
     body: autoApprove
         ? '설정에 따라 사진이 즉시 열람 가능 상태가 되었습니다.'
@@ -190,8 +241,10 @@ export async function requestPhotoForThread(input: {
     timeLabel: nowLabel(),
     type: notificationType,
   });
+  }
 }
 
+// 주인이 사진 열람을 승인하면 채팅방과 분실물 상태를 함께 갱신한다.
 export async function approvePhotoForThread(input: {
   loginId?: string;
   email?: string;
@@ -202,6 +255,7 @@ export async function approvePhotoForThread(input: {
   if (!thread) {
     throw new Error('Chat thread not found.');
   }
+  ensureThreadParticipant(requester.id, thread);
 
   const timeLabel = formatTimeLabel();
   const message = '주인이 사진 열람을 허용했습니다.';
@@ -210,6 +264,7 @@ export async function approvePhotoForThread(input: {
     threadId: input.threadId,
     text: message,
     sender: 'system',
+    senderUserId: requester.id,
     timeLabel,
     type: 'photoApproved',
   });
@@ -219,6 +274,8 @@ export async function approvePhotoForThread(input: {
     photoStatus: 'approved',
     lastMessage: message,
     lastTime: timeLabel,
+    unread: unreadForOtherParticipant(thread, requester.id),
+    lastSenderUserId: requester.id,
   });
 
   await updateLegacyLostItemChatState({
@@ -226,10 +283,10 @@ export async function approvePhotoForThread(input: {
     photoStatus: 'approved',
   });
 
-  const item = await getLegacyLostItemById(thread.item_id);
-  if (item) {
+  const notificationUserId = otherParticipantId(thread, requester.id);
+  if (notificationUserId) {
     await createNotification({
-      userId: requester.id,
+      userId: notificationUserId,
       title: '사진 승인 완료',
       body: '이제 보호된 분실물 사진을 열람할 수 있습니다.',
       timeLabel: nowLabel(),
@@ -238,6 +295,7 @@ export async function approvePhotoForThread(input: {
   }
 }
 
+// 채팅 신고 내용을 저장하고 신고 접수 메시지와 알림을 남긴다.
 export async function saveChatReport(input: {
   loginId?: string;
   email?: string;
@@ -249,6 +307,7 @@ export async function saveChatReport(input: {
   if (!thread) {
     throw new Error('Chat thread not found.');
   }
+  ensureThreadParticipant(requester.id, thread);
 
   const timeLabel = formatTimeLabel();
   const reportMessage = '비매너 유저 신고가 접수되었습니다.';
@@ -265,8 +324,17 @@ export async function saveChatReport(input: {
     threadId: input.threadId,
     text: reportMessage,
     sender: 'system',
+    senderUserId: requester.id,
     timeLabel,
     type: 'report',
+  });
+
+  await updateChatThread({
+    threadId: input.threadId,
+    lastMessage: reportMessage,
+    lastTime: timeLabel,
+    unread: 0,
+    lastSenderUserId: requester.id,
   });
 
   await createNotification({

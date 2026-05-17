@@ -12,6 +12,47 @@ export type MatchStatus = 'suggested' | 'reviewing' | 'confirmed' | 'dismissed';
 export type InquiryCategory = 'report' | 'support' | 'moderation';
 export type InquiryStatus = 'open' | 'reviewing' | 'resolved' | 'closed';
 
+export interface RewardQuestDto {
+  code: string;
+  title: string;
+  rewardMoney: number;
+  rewardPoints: number;
+  progressCurrent: number;
+  progressTarget: number;
+  progressLabel: string;
+  completed: boolean;
+  claimed: boolean;
+  iconKey: string;
+}
+
+export interface RewardShopItemDto {
+  id: string;
+  title: string;
+  description: string;
+  pricePoints: number;
+  iconKey: string;
+  purchased: boolean;
+}
+
+export interface RewardBenefitDto {
+  tier: string;
+  title: string;
+  description: string;
+  requiredPoints: number;
+  isCurrent: boolean;
+}
+
+export interface RewardStatusDto {
+  currentPoints: number;
+  lifetimePoints: number;
+  nextGoalPoints: number;
+  progress: number;
+  streakDays: number;
+  quests: RewardQuestDto[];
+  shopItems: RewardShopItemDto[];
+  benefits: RewardBenefitDto[];
+}
+
 export interface UserProfileDto {
   id: string;
   name: string;
@@ -64,6 +105,9 @@ export interface LostItemDto {
   ownerName: string;
   description: string;
   sourceDeviceId: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  accuracyMeters: number | null;
   mapX: number;
   mapY: number;
   threadId: string | null;
@@ -96,6 +140,8 @@ export interface SafeZoneDto {
   id: string;
   name: string;
   address: string;
+  latitude: number | null;
+  longitude: number | null;
   radiusMeters: number;
 }
 
@@ -165,6 +211,9 @@ export interface ListingSummaryDto {
   category: string;
   color: string;
   location: string;
+  latitude: number | null;
+  longitude: number | null;
+  accuracyMeters: number | null;
   happenedAt: string;
   happenedAtLabel: string;
   listingStatus: ListingWorkflowStatus;
@@ -230,6 +279,7 @@ export interface FinderBootstrapDto {
   suggestedMatches: MatchDto[];
   notifications: NotificationDto[];
   inquiries: InquiryDto[];
+  rewardStatus: RewardStatusDto;
   availableCategories: string[];
   availableColors: string[];
 }

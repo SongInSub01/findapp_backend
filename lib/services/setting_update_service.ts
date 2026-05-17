@@ -8,6 +8,7 @@ import { createNotification } from '@/lib/repositories/activity_data';
 import { requireRequestedUser } from '@/lib/services/user_lookup_service';
 import { nowLabel } from '@/lib/utils/time_label';
 
+// 앱에서 보낸 알림 설정 값을 현재 사용자 기준으로 저장한다.
 export async function saveAlertSettingValues(input: {
   loginId?: string;
   email?: string;
@@ -41,12 +42,15 @@ export async function saveAlertSettingValues(input: {
   });
 }
 
+// 안전지대 등록과 수정을 같은 흐름으로 처리한다.
 export async function saveSafeZoneValues(input: {
   loginId?: string;
   email?: string;
   zoneId?: string;
   name: string;
   address: string;
+  latitude?: number | null;
+  longitude?: number | null;
   radiusMeters: number;
 }) {
   const user = await requireRequestedUser(input, 'No user found for safe zone update.');
@@ -57,6 +61,8 @@ export async function saveSafeZoneValues(input: {
       zoneId: input.zoneId,
       name: input.name,
       address: input.address,
+      latitude: input.latitude,
+      longitude: input.longitude,
       radiusMeters: input.radiusMeters,
     });
     if (!updated) {
@@ -67,6 +73,8 @@ export async function saveSafeZoneValues(input: {
       userId: user.id,
       name: input.name,
       address: input.address,
+      latitude: input.latitude,
+      longitude: input.longitude,
       radiusMeters: input.radiusMeters,
     });
   }

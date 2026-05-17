@@ -11,6 +11,7 @@ export interface ListingSearchInput {
   dateTo?: string;
 }
 
+// 지도 표시와 검색 응답에 필요한 게시글 좌표까지 포함한 요약 행 구조다.
 export interface ListingSummaryRow {
   id: string;
   item_type: 'lost' | 'found';
@@ -18,6 +19,9 @@ export interface ListingSummaryRow {
   category: string;
   color: string;
   location: string;
+  latitude: number | null;
+  longitude: number | null;
+  accuracy_meters: number | null;
   happened_at: string;
   listing_status: 'open' | 'matched' | 'resolved' | 'archived';
   description: string;
@@ -28,6 +32,8 @@ export interface ListingSummaryRow {
   reward: number | null;
   match_count: number;
   owner_user_id: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ListingImageRow {
@@ -54,6 +60,9 @@ export interface LegacyLostItemRow {
   thread_id: string | null;
   photo_asset_path: string | null;
   source_device_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  accuracy_meters: number | null;
 }
 
 export interface LegacyLostItemChatRow {
@@ -83,9 +92,13 @@ export interface AutoLostItemInput {
   mapY: number;
   photoAssetPath: string | null;
   sourceDeviceId: string;
+  lastDetectedLatitude?: number | null;
+  lastDetectedLongitude?: number | null;
+  lastDetectedAccuracyMeters?: number | null;
   listingStatus?: 'open' | 'matched' | 'resolved' | 'archived';
 }
 
+// 분실물과 습득물 검색에서 공통으로 쓰는 필터 조건을 SQL에 붙인다.
 function pushCommonFilters(
   conditions: string[],
   values: unknown[],
@@ -160,6 +173,9 @@ export async function listLostListings(input: ListingSearchInput = {}) {
         lost_items.category,
         lost_items.color,
         lost_items.location,
+        lost_items.latitude,
+        lost_items.longitude,
+        lost_items.accuracy_meters,
         lost_items.lost_at::text as happened_at,
         lost_items.listing_status,
         lost_items.description,
@@ -180,7 +196,9 @@ export async function listLostListings(input: ListingSearchInput = {}) {
           where matches.lost_item_id = lost_items.id
             and matches.match_status != 'dismissed'
         )::int as match_count,
-        lost_items.owner_user_id
+        lost_items.owner_user_id,
+        lost_items.created_at::text as created_at,
+        lost_items.updated_at::text as updated_at
       from lost_items
       inner join users on users.id = lost_items.owner_user_id
       where ${conditions.join(' and ')}
@@ -213,6 +231,9 @@ export async function listFoundListings(input: ListingSearchInput = {}) {
         found_items.category,
         found_items.color,
         found_items.found_location as location,
+        found_items.latitude,
+        found_items.longitude,
+        found_items.accuracy_meters,
         found_items.found_at::text as happened_at,
         found_items.listing_status,
         found_items.description,
@@ -233,7 +254,9 @@ export async function listFoundListings(input: ListingSearchInput = {}) {
           where matches.found_item_id = found_items.id
             and matches.match_status != 'dismissed'
         )::int as match_count,
-        found_items.reporter_user_id as owner_user_id
+        found_items.reporter_user_id as owner_user_id,
+        found_items.created_at::text as created_at,
+        found_items.updated_at::text as updated_at
       from found_items
       inner join users on users.id = found_items.reporter_user_id
       where ${conditions.join(' and ')}
@@ -263,6 +286,9 @@ async function listLostListingsForOwner(whereClause: string, values: unknown[], 
         lost_items.category,
         lost_items.color,
         lost_items.location,
+        lost_items.latitude,
+        lost_items.longitude,
+        lost_items.accuracy_meters,
         lost_items.lost_at::text as happened_at,
         lost_items.listing_status,
         lost_items.description,
@@ -283,7 +309,9 @@ async function listLostListingsForOwner(whereClause: string, values: unknown[], 
           where matches.lost_item_id = lost_items.id
             and matches.match_status != 'dismissed'
         )::int as match_count,
-        lost_items.owner_user_id
+        lost_items.owner_user_id,
+        lost_items.created_at::text as created_at,
+        lost_items.updated_at::text as updated_at
       from lost_items
       inner join users on users.id = lost_items.owner_user_id
       where ${whereClause}
@@ -313,6 +341,9 @@ async function listFoundListingsForReporter(whereClause: string, values: unknown
         found_items.category,
         found_items.color,
         found_items.found_location as location,
+        found_items.latitude,
+        found_items.longitude,
+        found_items.accuracy_meters,
         found_items.found_at::text as happened_at,
         found_items.listing_status,
         found_items.description,
@@ -333,7 +364,9 @@ async function listFoundListingsForReporter(whereClause: string, values: unknown
           where matches.found_item_id = found_items.id
             and matches.match_status != 'dismissed'
         )::int as match_count,
-        found_items.reporter_user_id as owner_user_id
+        found_items.reporter_user_id as owner_user_id,
+        found_items.created_at::text as created_at,
+        found_items.updated_at::text as updated_at
       from found_items
       inner join users on users.id = found_items.reporter_user_id
       where ${whereClause}
@@ -360,7 +393,7 @@ export async function listLegacyLostItems() {
     `
       select id, title, location, time_label, reward, status, photo_status, distance,
              owner_name, description, map_x, map_y, thread_id, photo_asset_path,
-             source_device_id
+             source_device_id, latitude, longitude, accuracy_meters
       from lost_items
       order by created_at desc
     `,
@@ -386,7 +419,7 @@ export async function findLostItemBySourceDeviceId(sourceDeviceId: string) {
     `
       select id, title, location, time_label, reward, status, photo_status, distance,
              owner_name, description, map_x, map_y, thread_id, photo_asset_path,
-             source_device_id
+             source_device_id, latitude, longitude, accuracy_meters
       from lost_items
       where source_device_id = $1
       limit 1
@@ -437,6 +470,9 @@ export async function upsertLostItemFromDevice(input: AutoLostItemInput) {
           search_keywords = $20,
           contact_note = $21,
           source_device_id = $22,
+          latitude = $23,
+          longitude = $24,
+          accuracy_meters = $25,
           updated_at = now()
         where id = $1
         returning id
@@ -464,6 +500,9 @@ export async function upsertLostItemFromDevice(input: AutoLostItemInput) {
         searchKeywords,
         contactNote,
         input.sourceDeviceId,
+        input.lastDetectedLatitude ?? null,
+        input.lastDetectedLongitude ?? null,
+        input.lastDetectedAccuracyMeters ?? null,
       ],
     );
     return result.rows[0] ?? null;
@@ -475,11 +514,11 @@ export async function upsertLostItemFromDevice(input: AutoLostItemInput) {
         owner_user_id, title, location, time_label, reward, status, photo_status, distance,
         owner_name, description, map_x, map_y, photo_asset_path, category, color, lost_at,
         listing_status, feature_notes, search_keywords, contact_note, source_device_id,
-        created_at, updated_at
+        latitude, longitude, accuracy_meters, created_at, updated_at
       )
       values (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::timestamptz,
-        $17, $18, $19, $20, $21, now(), now()
+        $17, $18, $19, $20, $21, $22, $23, $24, now(), now()
       )
       returning id
     `,
@@ -505,6 +544,9 @@ export async function upsertLostItemFromDevice(input: AutoLostItemInput) {
       searchKeywords,
       contactNote,
       input.sourceDeviceId,
+      input.lastDetectedLatitude ?? null,
+      input.lastDetectedLongitude ?? null,
+      input.lastDetectedAccuracyMeters ?? null,
     ],
   );
   return result.rows[0] ?? null;
@@ -619,6 +661,7 @@ export async function replaceFoundItemImages(input: {
   }
 }
 
+// 분실물 등록 시 앱에서 받은 좌표와 상세 정보를 lost_items에 저장한다.
 export async function createLostListing(input: {
   ownerUserId: string;
   ownerName: string;
@@ -627,6 +670,10 @@ export async function createLostListing(input: {
   color: string;
   location: string;
   lostAt: string;
+  timeLabel: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracyMeters?: number | null;
   reward: number;
   listingStatus: 'open' | 'matched' | 'resolved' | 'archived';
   description: string;
@@ -645,11 +692,11 @@ export async function createLostListing(input: {
         owner_user_id, title, location, time_label, reward, status, photo_status, distance,
         owner_name, description, map_x, map_y, photo_asset_path,
         category, color, lost_at, listing_status, feature_notes, search_keywords, contact_note,
-        created_at, updated_at
+        latitude, longitude, accuracy_meters, created_at, updated_at
       )
       values (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-        $14, $15, $16::timestamptz, $17, $18, $19, $20, now(), now()
+        $14, $15, $16::timestamptz, $17, $18, $19, $20, $21, $22, $23, now(), now()
       )
       returning id
     `,
@@ -657,7 +704,7 @@ export async function createLostListing(input: {
       input.ownerUserId,
       input.title,
       input.location,
-      input.lostAt,
+      input.timeLabel,
       input.reward,
       input.legacyStatus,
       input.legacyPhotoStatus,
@@ -674,11 +721,15 @@ export async function createLostListing(input: {
       input.featureNotes,
       input.searchKeywords,
       input.contactNote,
+      input.latitude ?? null,
+      input.longitude ?? null,
+      input.accuracyMeters ?? null,
     ],
   );
   return result.rows[0];
 }
 
+// 분실물 수정 시 좌표, 상태, 설명, 이미지 연결 정보를 함께 갱신한다.
 export async function updateLostListing(input: {
   itemId: string;
   ownerName: string;
@@ -687,6 +738,10 @@ export async function updateLostListing(input: {
   color: string;
   location: string;
   lostAt: string;
+  timeLabel: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracyMeters?: number | null;
   reward: number;
   listingStatus: 'open' | 'matched' | 'resolved' | 'archived';
   description: string;
@@ -722,6 +777,9 @@ export async function updateLostListing(input: {
         feature_notes = $17,
         search_keywords = $18,
         contact_note = $19,
+        latitude = $20,
+        longitude = $21,
+        accuracy_meters = $22,
         updated_at = now()
       where id = $1
       returning id
@@ -730,7 +788,7 @@ export async function updateLostListing(input: {
       input.itemId,
       input.title,
       input.location,
-      input.lostAt,
+      input.timeLabel,
       input.reward,
       input.legacyStatus,
       input.legacyPhotoStatus,
@@ -746,6 +804,9 @@ export async function updateLostListing(input: {
       input.featureNotes,
       input.searchKeywords,
       input.contactNote,
+      input.latitude ?? null,
+      input.longitude ?? null,
+      input.accuracyMeters ?? null,
     ],
   );
   return result.rows[0] ?? null;
@@ -796,6 +857,7 @@ export async function updateLegacyLostItemChatState(input: {
   return result.rows[0] ?? null;
 }
 
+// 습득물 등록 시 습득 위치 좌표와 보관/연락 정보를 found_items에 저장한다.
 export async function createFoundListing(input: {
   reporterUserId: string;
   title: string;
@@ -803,6 +865,9 @@ export async function createFoundListing(input: {
   color: string;
   foundLocation: string;
   foundAt: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracyMeters?: number | null;
   listingStatus: 'open' | 'matched' | 'resolved' | 'archived';
   description: string;
   featureNotes: string;
@@ -814,9 +879,10 @@ export async function createFoundListing(input: {
     `
       insert into found_items (
         reporter_user_id, title, category, color, found_location, found_at,
+        latitude, longitude, accuracy_meters,
         listing_status, description, feature_notes, storage_note, search_keywords, contact_note
       )
-      values ($1, $2, $3, $4, $5, $6::timestamptz, $7, $8, $9, $10, $11, $12)
+      values ($1, $2, $3, $4, $5, $6::timestamptz, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       returning id
     `,
     [
@@ -826,6 +892,9 @@ export async function createFoundListing(input: {
       input.color,
       input.foundLocation,
       input.foundAt,
+      input.latitude ?? null,
+      input.longitude ?? null,
+      input.accuracyMeters ?? null,
       input.listingStatus,
       input.description,
       input.featureNotes,
@@ -837,6 +906,7 @@ export async function createFoundListing(input: {
   return result.rows[0];
 }
 
+// 습득물 수정 시 좌표, 상태, 설명, 이미지 연결 정보를 함께 갱신한다.
 export async function updateFoundListing(input: {
   itemId: string;
   title: string;
@@ -844,6 +914,9 @@ export async function updateFoundListing(input: {
   color: string;
   foundLocation: string;
   foundAt: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracyMeters?: number | null;
   listingStatus: 'open' | 'matched' | 'resolved' | 'archived';
   description: string;
   featureNotes: string;
@@ -860,12 +933,15 @@ export async function updateFoundListing(input: {
         color = $4,
         found_location = $5,
         found_at = $6::timestamptz,
-        listing_status = $7,
-        description = $8,
-        feature_notes = $9,
-        storage_note = $10,
-        search_keywords = $11,
-        contact_note = $12,
+        latitude = $7,
+        longitude = $8,
+        accuracy_meters = $9,
+        listing_status = $10,
+        description = $11,
+        feature_notes = $12,
+        storage_note = $13,
+        search_keywords = $14,
+        contact_note = $15,
         updated_at = now()
       where id = $1
       returning id
@@ -877,6 +953,9 @@ export async function updateFoundListing(input: {
       input.color,
       input.foundLocation,
       input.foundAt,
+      input.latitude ?? null,
+      input.longitude ?? null,
+      input.accuracyMeters ?? null,
       input.listingStatus,
       input.description,
       input.featureNotes,

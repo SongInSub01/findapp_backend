@@ -1,15 +1,18 @@
 // BLE 알림 설정과 안심 구역 정보를 읽고 쓰는 설정 저장소다.
 import { query } from '@/lib/db/query';
 
+// 사용자별 안전지대를 좌표와 반경까지 포함해 조회한다.
 export async function listSafeZones(userId: string) {
   const result = await query<{
     id: string;
     name: string;
     address: string;
+    latitude: number | null;
+    longitude: number | null;
     radius_meters: number;
   }>(
     `
-      select id, name, address, radius_meters
+      select id, name, address, latitude, longitude, radius_meters
       from safe_zones
       where user_id = $1
       order by created_at asc
@@ -43,6 +46,7 @@ export async function getAlertSettings(userId: string) {
   return result.rows[0] ?? null;
 }
 
+// 알림 설정은 사용자별로 하나만 유지되도록 있으면 수정하고 없으면 생성한다.
 export async function upsertAlertSettings(input: {
   userId: string;
   distanceMeters: number;
@@ -86,28 +90,41 @@ export async function upsertAlertSettings(input: {
   );
 }
 
+// 새 안전지대를 주소, 좌표, 반경 정보와 함께 저장한다.
 export async function createSafeZone(input: {
   userId: string;
   name: string;
   address: string;
+  latitude?: number | null;
+  longitude?: number | null;
   radiusMeters: number;
 }) {
   const result = await query<{ id: string }>(
     `
-      insert into safe_zones (user_id, name, address, radius_meters)
-      values ($1, $2, $3, $4)
+      insert into safe_zones (user_id, name, address, latitude, longitude, radius_meters)
+      values ($1, $2, $3, $4, $5, $6)
       returning id
     `,
-    [input.userId, input.name, input.address, input.radiusMeters],
+    [
+      input.userId,
+      input.name,
+      input.address,
+      input.latitude ?? null,
+      input.longitude ?? null,
+      input.radiusMeters,
+    ],
   );
   return result.rows[0] ?? null;
 }
 
+// 기존 안전지대의 주소, 좌표, 반경 정보를 갱신한다.
 export async function updateSafeZone(input: {
   userId: string;
   zoneId: string;
   name: string;
   address: string;
+  latitude?: number | null;
+  longitude?: number | null;
   radiusMeters: number;
 }) {
   const result = await query<{ id: string }>(
@@ -115,12 +132,22 @@ export async function updateSafeZone(input: {
       update safe_zones
       set name = $3,
           address = $4,
-          radius_meters = $5
+          latitude = $5,
+          longitude = $6,
+          radius_meters = $7
       where id = $1
         and user_id = $2
       returning id
     `,
-    [input.zoneId, input.userId, input.name, input.address, input.radiusMeters],
+    [
+      input.zoneId,
+      input.userId,
+      input.name,
+      input.address,
+      input.latitude ?? null,
+      input.longitude ?? null,
+      input.radiusMeters,
+    ],
   );
   return result.rows[0] ?? null;
 }

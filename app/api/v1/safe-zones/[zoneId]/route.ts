@@ -4,11 +4,14 @@ import { z } from 'zod';
 
 import { saveSafeZoneValues } from '@/lib/services/setting_update_service';
 
+// 안전지대 수정 요청에서 좌표와 알림 반경 값을 검증한다.
 const updateSafeZoneSchema = z.object({
   email: z.string().email().optional(),
   loginId: z.string().min(1).optional(),
   name: z.string().min(1),
   address: z.string().min(1),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
   radiusMeters: z.number().int().positive(),
 });
 

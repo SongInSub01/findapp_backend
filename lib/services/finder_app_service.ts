@@ -22,6 +22,7 @@ import {
   listNotifications,
   listReports,
 } from '@/lib/repositories/activity_data';
+import { getUserByLoginId } from '@/lib/repositories/user_data';
 import {
   createInquiry,
   listInquiriesByUser,
@@ -65,6 +66,7 @@ import { listChatThreadsForUser, updateChatThread } from '@/lib/repositories/cha
 import { listBleDevices, updateBleDevice } from '@/lib/repositories/device_data';
 import { getCurrentLocation } from '@/lib/repositories/current_location_data';
 import { getAlertSettings, listSafeZones } from '@/lib/repositories/setting_data';
+import { getRewardStatus } from '@/lib/repositories/reward_data';
 import { requireRequestedUser } from '@/lib/services/user_lookup_service';
 import { formatRelativeDateLabel, nowLabel } from '@/lib/utils/time_label';
 
@@ -111,6 +113,7 @@ function toInquiryDto(row: {
   };
 }
 
+// DB 게시글 요약 행을 앱 검색/목록 화면이 쓰는 좌표 포함 DTO로 바꾼다.
 function toListingSummaryDto(
   row: ListingSummaryRow,
   requesterUserId: string,
@@ -122,6 +125,9 @@ function toListingSummaryDto(
     category: row.category,
     color: row.color,
     location: row.location,
+    latitude: row.latitude == null ? null : Number(row.latitude),
+    longitude: row.longitude == null ? null : Number(row.longitude),
+    accuracyMeters: row.accuracy_meters == null ? null : Number(row.accuracy_meters),
     happenedAt: row.happened_at,
     happenedAtLabel: formatRelativeDateLabel(row.happened_at),
     listingStatus: row.listing_status,
@@ -136,6 +142,7 @@ function toListingSummaryDto(
   };
 }
 
+// BLE 기기 신호 상태를 앱에서 쓰는 camelCase 구조로 바꾼다.
 function toBleDeviceDto(row: {
   id: string;
   name: string;
@@ -182,6 +189,7 @@ function toBleDeviceDto(row: {
   };
 }
 
+// 구형 lost_items 응답도 좌표와 채팅 정보를 포함해 앱 DTO로 맞춘다.
 function toLostItemDto(row: {
   id: string;
   title: string;
@@ -194,6 +202,9 @@ function toLostItemDto(row: {
   owner_name: string;
   description: string;
   source_device_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  accuracy_meters: number | null;
   map_x: number;
   map_y: number;
   thread_id: string | null;
@@ -211,6 +222,9 @@ function toLostItemDto(row: {
     ownerName: row.owner_name,
     description: row.description,
     sourceDeviceId: row.source_device_id,
+    latitude: row.latitude == null ? null : Number(row.latitude),
+    longitude: row.longitude == null ? null : Number(row.longitude),
+    accuracyMeters: row.accuracy_meters == null ? null : Number(row.accuracy_meters),
     mapX: Number(row.map_x),
     mapY: Number(row.map_y),
     threadId: row.thread_id,
@@ -218,6 +232,7 @@ function toLostItemDto(row: {
   };
 }
 
+// 채팅방과 메시지 목록을 앱 채팅 화면에 맞는 구조로 바꾼다.
 function toChatThreadDto(row: {
   id: string;
   item_id: string;
@@ -258,20 +273,26 @@ function toChatThreadDto(row: {
   };
 }
 
+// 안전지대 DB 값을 좌표와 반경을 포함한 앱 DTO로 변환한다.
 function toSafeZoneDto(row: {
   id: string;
   name: string;
   address: string;
+  latitude: number | null;
+  longitude: number | null;
   radius_meters: number;
 }): SafeZoneDto {
   return {
     id: row.id,
     name: row.name,
     address: row.address,
+    latitude: row.latitude == null ? null : Number(row.latitude),
+    longitude: row.longitude == null ? null : Number(row.longitude),
     radiusMeters: row.radius_meters,
   };
 }
 
+// 알림 설정이 없을 때도 앱이 바로 동작하도록 기본 설정을 채운다.
 function toAlertSettingsDto(row: {
   distance_meters: number;
   disconnect_minutes: number;
@@ -415,6 +436,9 @@ async function reconcileOverdueBleDevices(input: {
       mapY: Number(device.map_y),
       photoAssetPath: device.photo_asset_path,
       sourceDeviceId: device.id,
+      lastDetectedLatitude: device.last_detected_latitude == null ? null : Number(device.last_detected_latitude),
+      lastDetectedLongitude: device.last_detected_longitude == null ? null : Number(device.last_detected_longitude),
+      lastDetectedAccuracyMeters: device.last_detected_accuracy_meters == null ? null : Number(device.last_detected_accuracy_meters),
       listingStatus: 'open',
     });
     await updateBleDevice({
@@ -628,6 +652,7 @@ function buildPseudoCoordinate(seed: string, salt: number) {
   return Number((((total % 1000) / 1000) * 0.9 + 0.05).toFixed(4));
 }
 
+// 앱 첫 진입에 필요한 사용자, 게시글, 기기, 채팅, 설정 데이터를 한 번에 조립한다.
 export async function getFinderBootstrap(input: {
   email?: string;
   loginId?: string;
@@ -660,6 +685,7 @@ export async function getFinderBootstrap(input: {
     matchRows,
     notificationRows,
     inquiryRows,
+    rewardStatus,
     categories,
     colors,
   ] = await Promise.all([
@@ -676,6 +702,7 @@ export async function getFinderBootstrap(input: {
     listMatchesForUser(user.id),
     listNotifications(user.id),
     listInquiriesByUser(user.id),
+    getRewardStatus(user.id),
     listDistinctCategories(),
     listDistinctColors(),
   ]);
@@ -725,11 +752,13 @@ export async function getFinderBootstrap(input: {
     suggestedMatches,
     notifications,
     inquiries,
+    rewardStatus,
     availableCategories: categories,
     availableColors: colors,
   };
 }
 
+// 분실물과 습득물을 조건별로 검색하고 itemType 값을 기준으로 결과를 합친다.
 export async function searchFinderListings(input: {
   loginId?: string;
   email?: string;
@@ -767,6 +796,7 @@ export async function searchFinderListings(input: {
     .sort((left, right) => Date.parse(right.happenedAt) - Date.parse(left.happenedAt));
 }
 
+// 분실물 또는 습득물 상세 정보를 이미지와 함께 조회한다.
 export async function getFinderListingDetail(input: {
   loginId?: string;
   email?: string;
@@ -795,8 +825,8 @@ export async function getFinderListingDetail(input: {
 
   return {
     ...toListingSummaryDto(summary, user.id),
-    createdAt: summary.happened_at,
-    updatedAt: summary.happened_at,
+    createdAt: summary.created_at,
+    updatedAt: summary.updated_at,
     images: images.map((image) => ({
       id: image.id,
       imageUrl: image.image_url,
@@ -808,6 +838,7 @@ export async function getFinderListingDetail(input: {
   };
 }
 
+// 분실물 등록 요청을 DB 저장, 이미지 연결, 매칭 갱신까지 이어서 처리한다.
 export async function createFinderLostItem(input: {
   loginId: string;
   title: string;
@@ -815,6 +846,9 @@ export async function createFinderLostItem(input: {
   color: string;
   location: string;
   happenedAt: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracyMeters?: number | null;
   reward: number;
   listingStatus: 'open' | 'matched' | 'resolved' | 'archived';
   description: string;
@@ -840,6 +874,10 @@ export async function createFinderLostItem(input: {
     color: input.color,
     location: input.location,
     lostAt: input.happenedAt,
+    timeLabel: formatRelativeDateLabel(input.happenedAt),
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
+    accuracyMeters: input.accuracyMeters ?? null,
     reward: input.reward,
     listingStatus: input.listingStatus,
     description: input.description,
@@ -878,6 +916,7 @@ export async function createFinderLostItem(input: {
   });
 }
 
+// 분실물 수정 요청을 권한 확인 후 DB와 이미지 목록에 반영한다.
 export async function updateFinderLostItem(input: {
   loginId: string;
   itemId: string;
@@ -886,6 +925,9 @@ export async function updateFinderLostItem(input: {
   color: string;
   location: string;
   happenedAt: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracyMeters?: number | null;
   reward: number;
   listingStatus: 'open' | 'matched' | 'resolved' | 'archived';
   description: string;
@@ -916,6 +958,10 @@ export async function updateFinderLostItem(input: {
     color: input.color,
     location: input.location,
     lostAt: input.happenedAt,
+    timeLabel: formatRelativeDateLabel(input.happenedAt),
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
+    accuracyMeters: input.accuracyMeters ?? null,
     reward: input.reward,
     listingStatus: input.listingStatus,
     description: input.description,
@@ -1001,6 +1047,7 @@ export async function saveFinderLostItemReward(input: {
   });
 }
 
+// 습득물 등록 요청을 DB 저장, 이미지 연결, 매칭 갱신까지 이어서 처리한다.
 export async function createFinderFoundItem(input: {
   loginId: string;
   title: string;
@@ -1008,6 +1055,9 @@ export async function createFinderFoundItem(input: {
   color: string;
   location: string;
   happenedAt: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracyMeters?: number | null;
   listingStatus: 'open' | 'matched' | 'resolved' | 'archived';
   description: string;
   featureNotes: string;
@@ -1032,6 +1082,9 @@ export async function createFinderFoundItem(input: {
     color: input.color,
     foundLocation: input.location,
     foundAt: input.happenedAt,
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
+    accuracyMeters: input.accuracyMeters ?? null,
     listingStatus: input.listingStatus,
     description: input.description,
     featureNotes: input.featureNotes,
@@ -1054,6 +1107,7 @@ export async function createFinderFoundItem(input: {
   });
 }
 
+// 습득물 수정 요청을 권한 확인 후 DB와 이미지 목록에 반영한다.
 export async function updateFinderFoundItem(input: {
   loginId: string;
   itemId: string;
@@ -1062,6 +1116,9 @@ export async function updateFinderFoundItem(input: {
   color: string;
   location: string;
   happenedAt: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracyMeters?: number | null;
   listingStatus: 'open' | 'matched' | 'resolved' | 'archived';
   description: string;
   featureNotes: string;
@@ -1091,6 +1148,9 @@ export async function updateFinderFoundItem(input: {
     color: input.color,
     foundLocation: input.location,
     foundAt: input.happenedAt,
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
+    accuracyMeters: input.accuracyMeters ?? null,
     listingStatus: input.listingStatus,
     description: input.description,
     featureNotes: input.featureNotes,
@@ -1144,6 +1204,7 @@ export async function listFinderMatches(input: {
   return buildMatchDtos(user.id, rawMatches);
 }
 
+// 관리자 계정이 없어도 문의 내용은 저장되도록 처리한다.
 export async function submitFinderInquiry(input: {
   loginId: string;
   category: 'report' | 'support' | 'moderation';
@@ -1166,17 +1227,16 @@ export async function submitFinderInquiry(input: {
     relatedItemId: input.relatedItemId ?? null,
   });
 
-  const adminUser = await requireRequestedUser(
-    { loginId: 'admin' },
-    '관리자 계정을 찾지 못했습니다.',
-  );
-  await createNotification({
-    userId: adminUser.id,
-    title: '새 문의가 접수되었습니다',
-    body: `[${input.category}] ${input.title}`,
-    timeLabel: '방금 전',
-    type: 'report',
-  });
+  const adminUser = await getUserByLoginId('admin');
+  if (adminUser) {
+    await createNotification({
+      userId: adminUser.id,
+      title: '새 문의가 접수되었습니다',
+      body: `[${input.category}] ${input.title}`,
+      timeLabel: '방금 전',
+      type: 'report',
+    });
+  }
 
   return created.id;
 }

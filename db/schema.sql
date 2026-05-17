@@ -58,6 +58,18 @@ create table if not exists alert_settings (
 alter table alert_settings add column if not exists default_reward integer not null default 30000;
 alter table alert_settings add column if not exists map_theme text not null default 'dark';
 
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'alert_settings_map_theme_check'
+  ) then
+    alter table alert_settings
+      add constraint alert_settings_map_theme_check
+      check (map_theme in ('dark', 'light'))
+      not valid;
+  end if;
+end $$;
+
 -- ble_devices: 사용자가 등록한 BLE 센서 연결 물건 목록
 create table if not exists ble_devices (
   id uuid primary key default gen_random_uuid(),
@@ -85,6 +97,22 @@ alter table ble_devices add column if not exists last_detected_longitude numeric
 alter table ble_devices add column if not exists last_detected_accuracy_meters numeric(6, 2);
 alter table ble_devices add column if not exists focused_scan_until timestamptz;
 alter table ble_devices add column if not exists rediscovered_at timestamptz;
+
+-- 같은 사용자가 동일한 BLE 코드를 중복 등록하지 못하게 막는다.
+create unique index if not exists ble_devices_user_ble_code_unique_idx
+  on ble_devices(user_id, ble_code);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'ble_devices_ble_status_check'
+  ) then
+    alter table ble_devices
+      add constraint ble_devices_ble_status_check
+      check (ble_status in ('near', 'far', 'risk', 'disconnected', 'lost', 'rediscovered'))
+      not valid;
+  end if;
+end $$;
 
 -- lost_items: 주변 탐색과 채팅 진입에 노출되는 분실물 목록
 create table if not exists lost_items (
@@ -132,14 +160,21 @@ create table if not exists chat_threads (
   created_at timestamptz not null default now()
 );
 
+-- 채팅방 요청자와 마지막 발신자를 저장해 사용자별 대화방과 읽음 상태를 구분한다.
 alter table chat_threads add column if not exists requester_user_id uuid references users(id) on delete set null;
+alter table chat_threads add column if not exists last_sender_user_id uuid references users(id) on delete set null;
 
 create index if not exists chat_threads_requester_user_id_idx on chat_threads(requester_user_id);
+create index if not exists chat_threads_last_sender_user_id_idx on chat_threads(last_sender_user_id);
+create unique index if not exists chat_threads_item_requester_user_unique_idx
+  on chat_threads(item_id, requester_user_id)
+  where requester_user_id is not null;
 
 -- chat_messages: 각 대화방 안의 실제 메시지 목록
 create table if not exists chat_messages (
   id uuid primary key default gen_random_uuid(),
   thread_id uuid not null references chat_threads(id) on delete cascade,
+  sender_user_id uuid references users(id) on delete set null,
   text text not null,
   sender text not null check (sender in ('me', 'other', 'system')),
   time_label text not null,
@@ -147,15 +182,25 @@ create table if not exists chat_messages (
   created_at timestamptz not null default now()
 );
 
+-- 메시지 발신자 id를 저장해 보는 사람 기준의 me/other 표시를 계산한다.
+alter table chat_messages add column if not exists sender_user_id uuid references users(id) on delete set null;
+create index if not exists chat_messages_sender_user_id_idx on chat_messages(sender_user_id);
+
 -- safe_zones: 알림이 완화되는 사용자별 안심 구역
 create table if not exists safe_zones (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references users(id) on delete cascade,
   name text not null,
   address text not null,
+  latitude numeric(10, 7),
+  longitude numeric(10, 7),
   radius_meters integer not null,
   created_at timestamptz not null default now()
 );
+
+-- 안전지대도 지도 위에 표시할 수 있도록 좌표를 저장한다.
+alter table safe_zones add column if not exists latitude numeric(10, 7);
+alter table safe_zones add column if not exists longitude numeric(10, 7);
 
 -- notifications: 앱 상단 알림함에 보여줄 이벤트 내역
 create table if not exists notifications (
@@ -205,7 +250,23 @@ alter table lost_items add column if not exists listing_status text not null def
 alter table lost_items add column if not exists feature_notes text;
 alter table lost_items add column if not exists search_keywords text;
 alter table lost_items add column if not exists contact_note text;
+-- 분실물 좌표는 지도 표시와 거리 기반 검색을 위해 저장한다.
+alter table lost_items add column if not exists latitude numeric(10, 7);
+alter table lost_items add column if not exists longitude numeric(10, 7);
+alter table lost_items add column if not exists accuracy_meters numeric(6, 2);
 alter table lost_items add column if not exists updated_at timestamptz not null default now();
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'lost_items_listing_status_check'
+  ) then
+    alter table lost_items
+      add constraint lost_items_listing_status_check
+      check (listing_status in ('open', 'matched', 'resolved', 'archived'))
+      not valid;
+  end if;
+end $$;
 
 update lost_items
 set
@@ -264,9 +325,17 @@ create table if not exists found_items (
   storage_note text,
   search_keywords text not null,
   contact_note text not null,
+  latitude numeric(10, 7),
+  longitude numeric(10, 7),
+  accuracy_meters numeric(6, 2),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- 습득물 좌표는 지도 표시와 분실물 매칭 비교를 위해 저장한다.
+alter table found_items add column if not exists latitude numeric(10, 7);
+alter table found_items add column if not exists longitude numeric(10, 7);
+alter table found_items add column if not exists accuracy_meters numeric(6, 2);
 
 create index if not exists found_items_reporter_user_id_idx on found_items(reporter_user_id);
 create index if not exists found_items_listing_status_idx on found_items(listing_status);
@@ -326,3 +395,78 @@ create table if not exists inquiries (
 create index if not exists inquiries_user_id_idx on inquiries(user_id);
 create index if not exists inquiries_status_idx on inquiries(status);
 create index if not exists inquiries_category_idx on inquiries(category);
+
+-- reward_accounts: 사용자별 리워드 포인트와 누적 포인트를 저장한다.
+create table if not exists reward_accounts (
+  user_id uuid primary key references users(id) on delete cascade,
+  current_points integer not null default 0 check (current_points >= 0),
+  lifetime_points integer not null default 0 check (lifetime_points >= 0),
+  streak_days integer not null default 1 check (streak_days >= 0),
+  next_goal_points integer not null default 3500 check (next_goal_points > 0),
+  updated_at timestamptz not null default now()
+);
+
+-- reward_quests: 사용자가 완료하고 수령할 수 있는 리워드 퀘스트 상태를 저장한다.
+create table if not exists reward_quests (
+  user_id uuid not null references users(id) on delete cascade,
+  code text not null,
+  title text not null,
+  reward_money integer not null check (reward_money >= 0),
+  reward_points integer not null check (reward_points >= 0),
+  progress_current integer not null default 0 check (progress_current >= 0),
+  progress_target integer not null check (progress_target > 0),
+  icon_key text not null,
+  completed boolean not null default false,
+  claimed boolean not null default false,
+  completed_at timestamptz,
+  claimed_at timestamptz,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, code)
+);
+
+-- reward_shop_items: 포인트로 교환할 수 있는 리워드 상점 상품을 저장한다.
+create table if not exists reward_shop_items (
+  id text primary key,
+  title text not null,
+  description text not null,
+  price_points integer not null check (price_points > 0),
+  icon_key text not null,
+  sort_order integer not null default 0
+);
+
+insert into reward_shop_items (id, title, description, price_points, icon_key, sort_order)
+values
+  ('coffee', '커피 쿠폰', '아메리카노 교환권', 1500, 'coffee', 1),
+  ('convenience', '편의점 상품권', '5,000원 모바일 상품권', 3000, 'store', 2),
+  ('delivery', '배달 할인 쿠폰', '배달앱 할인 쿠폰', 2500, 'delivery', 3),
+  ('booster', '포인트 부스터', '7일 동안 포인트 2배 적립', 1200, 'flash', 4),
+  ('premium_profile', '프리미엄 프로필', '프로필 테두리 변경', 800, 'premium', 5),
+  ('nickname_color', '닉네임 컬러 변경', '닉네임 색상 커스텀', 600, 'palette', 6)
+on conflict (id) do update
+set title = excluded.title,
+    description = excluded.description,
+    price_points = excluded.price_points,
+    icon_key = excluded.icon_key,
+    sort_order = excluded.sort_order;
+
+-- reward_purchases: 사용자가 포인트 상점에서 구매한 내역을 저장한다.
+create table if not exists reward_purchases (
+  user_id uuid not null references users(id) on delete cascade,
+  shop_item_id text not null references reward_shop_items(id) on delete cascade,
+  purchased_at timestamptz not null default now(),
+  primary key (user_id, shop_item_id)
+);
+
+-- reward_point_events: 포인트 적립과 사용 내역을 감사 로그처럼 남긴다.
+create table if not exists reward_point_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  points integer not null,
+  reason text not null,
+  quest_code text,
+  shop_item_id text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists reward_point_events_user_created_idx
+  on reward_point_events(user_id, created_at desc);

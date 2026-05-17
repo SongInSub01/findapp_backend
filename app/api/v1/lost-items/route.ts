@@ -7,6 +7,7 @@ import {
   searchFinderListings,
 } from '@/lib/services/finder_app_service';
 
+// 분실물 등록 요청에서 위치 좌표와 사례금 정보를 함께 검증한다.
 const lostItemSchema = z.object({
   loginId: z.string().min(1, '로그인 아이디가 필요합니다.'),
   title: z.string().min(1, '분실물 이름을 입력해 주세요.'),
@@ -14,6 +15,9 @@ const lostItemSchema = z.object({
   color: z.string().min(1, '색상을 입력해 주세요.'),
   location: z.string().min(1, '분실 위치를 입력해 주세요.'),
   happenedAt: z.string().min(1, '분실 시간을 입력해 주세요.'),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
+  accuracyMeters: z.number().nonnegative().nullable().optional(),
   reward: z.number().int().min(0).default(0),
   listingStatus: z.enum(['open', 'matched', 'resolved', 'archived']).default('open'),
   description: z.string().min(1, '설명을 입력해 주세요.'),
