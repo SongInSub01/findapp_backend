@@ -11,6 +11,7 @@
     "db:roundtrip": "tsx scripts/verify-db-roundtrip.ts",
     "db:setup": "tsx scripts/setup-db.ts",
     "db:seed": "tsx scripts/seed-db.ts",
+    "db:test-users": "tsx scripts/prepare-test-users.ts",
     "db:cleanup:ops": "tsx scripts/cleanup-operational.ts"
   },
   "dependencies": {
