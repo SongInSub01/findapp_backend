@@ -98,11 +98,13 @@ export interface LostItemDto {
   title: string;
   location: string;
   timeLabel: string;
+  createdAt: string;
   reward: number;
   status: ItemStatus;
   photoStatus: PhotoAccessStatus;
   distance: string;
   ownerName: string;
+  isMine: boolean;
   description: string;
   sourceDeviceId: string | null;
   latitude: number | null;

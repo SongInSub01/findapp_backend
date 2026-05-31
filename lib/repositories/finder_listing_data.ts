@@ -46,6 +46,7 @@ export interface ListingImageRow {
 
 export interface LegacyLostItemRow {
   id: string;
+  owner_user_id: string;
   title: string;
   location: string;
   time_label: string;
@@ -63,6 +64,7 @@ export interface LegacyLostItemRow {
   latitude: number | null;
   longitude: number | null;
   accuracy_meters: number | null;
+  created_at: string;
 }
 
 export interface LegacyLostItemChatRow {
@@ -391,9 +393,9 @@ export async function getFoundListingById(itemId: string) {
 export async function listLegacyLostItems() {
   const result = await query<LegacyLostItemRow>(
     `
-      select id, title, location, time_label, reward, status, photo_status, distance,
+      select id, owner_user_id, title, location, time_label, reward, status, photo_status, distance,
              owner_name, description, map_x, map_y, thread_id, photo_asset_path,
-             source_device_id, latitude, longitude, accuracy_meters
+             source_device_id, latitude, longitude, accuracy_meters, created_at::text as created_at
       from lost_items
       order by created_at desc
     `,

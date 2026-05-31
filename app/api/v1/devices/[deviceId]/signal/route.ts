@@ -10,9 +10,9 @@ const refreshSchema = z.object({
   loginId: z.string().min(1).optional(),
   email: z.string().email().optional(),
   rssi: z.number().int().optional(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
-  accuracyMeters: z.number().nullable().optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  accuracyMeters: z.number().nonnegative().nullable().optional(),
   focusMinutes: z.number().int().min(1).max(30).optional(),
 });
 

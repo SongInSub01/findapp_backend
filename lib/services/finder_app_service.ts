@@ -192,6 +192,7 @@ function toBleDeviceDto(row: {
 // 구형 lost_items 응답도 좌표와 채팅 정보를 포함해 앱 DTO로 맞춘다.
 function toLostItemDto(row: {
   id: string;
+  owner_user_id: string;
   title: string;
   location: string;
   time_label: string;
@@ -205,21 +206,24 @@ function toLostItemDto(row: {
   latitude: number | null;
   longitude: number | null;
   accuracy_meters: number | null;
+  created_at: string;
   map_x: number;
   map_y: number;
   thread_id: string | null;
   photo_asset_path: string | null;
-}): LostItemDto {
+}, requesterUserId: string): LostItemDto {
   return {
     id: row.id,
     title: row.title,
     location: row.location,
     timeLabel: row.time_label,
+    createdAt: row.created_at,
     reward: row.reward,
     status: row.status,
     photoStatus: row.photo_status,
     distance: row.distance,
     ownerName: row.owner_name,
+    isMine: row.owner_user_id === requesterUserId,
     description: row.description,
     sourceDeviceId: row.source_device_id,
     latitude: row.latitude == null ? null : Number(row.latitude),
@@ -708,7 +712,7 @@ export async function getFinderBootstrap(input: {
   ]);
 
   const myDevices = myDeviceRows.map(toBleDeviceDto);
-  const lostItems = legacyLostRows.map(toLostItemDto);
+  const lostItems = legacyLostRows.map((item) => toLostItemDto(item, user.id));
   const currentLocation = toCurrentLocationDto(currentLocationRow);
   const chatThreads = chatThreadRows.map(toChatThreadDto);
   const safeZones = safeZoneRows.map(toSafeZoneDto);

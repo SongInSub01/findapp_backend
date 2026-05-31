@@ -8,9 +8,9 @@ import { requireRequestedUser } from '@/lib/services/user_lookup_service';
 const locationSchema = z.object({
   loginId: z.string().min(1).optional(),
   email: z.string().email().optional(),
-  latitude: z.number(),
-  longitude: z.number(),
-  accuracyMeters: z.number().nullable().optional(),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  accuracyMeters: z.number().nonnegative().nullable().optional(),
 });
 
 function toCurrentLocationDto(row: {
