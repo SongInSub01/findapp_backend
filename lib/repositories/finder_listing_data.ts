@@ -65,6 +65,8 @@ export interface LegacyLostItemRow {
   longitude: number | null;
   accuracy_meters: number | null;
   created_at: string;
+  listing_status: 'open' | 'matched' | 'resolved' | 'archived';
+  happened_at: string | null;
 }
 
 export interface LegacyLostItemChatRow {
@@ -395,7 +397,8 @@ export async function listLegacyLostItems() {
     `
       select id, owner_user_id, title, location, time_label, reward, status, photo_status, distance,
              owner_name, description, map_x, map_y, thread_id, photo_asset_path,
-             source_device_id, latitude, longitude, accuracy_meters, created_at::text as created_at
+             source_device_id, latitude, longitude, accuracy_meters, created_at::text as created_at,
+             listing_status, lost_at::text as happened_at
       from lost_items
       order by created_at desc
     `,

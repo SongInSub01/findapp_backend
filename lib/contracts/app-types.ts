@@ -114,6 +114,8 @@ export interface LostItemDto {
   mapY: number;
   threadId: string | null;
   photoAssetPath: string | null;
+  listingStatus: 'open' | 'matched' | 'resolved' | 'archived';
+  happenedAt?: string | null;
 }
 
 export interface ChatMessageDto {

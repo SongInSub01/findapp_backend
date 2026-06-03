@@ -211,6 +211,8 @@ function toLostItemDto(row: {
   map_y: number;
   thread_id: string | null;
   photo_asset_path: string | null;
+  listing_status?: 'open' | 'matched' | 'resolved' | 'archived';
+  happened_at?: string | null;
 }, requesterUserId: string): LostItemDto {
   return {
     id: row.id,
@@ -218,6 +220,7 @@ function toLostItemDto(row: {
     location: row.location,
     timeLabel: row.time_label,
     createdAt: row.created_at,
+    happenedAt: row.happened_at ?? undefined,
     reward: row.reward,
     status: row.status,
     photoStatus: row.photo_status,
@@ -233,6 +236,7 @@ function toLostItemDto(row: {
     mapY: Number(row.map_y),
     threadId: row.thread_id,
     photoAssetPath: row.photo_asset_path,
+    listingStatus: row.listing_status ?? 'open',
   };
 }
 

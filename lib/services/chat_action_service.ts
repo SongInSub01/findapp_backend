@@ -81,7 +81,7 @@ export async function openOrCreateChatThread(input: {
     lastMessage: firstContactMessage,
     lastTime: timeLabel,
     unread: item.owner_user_id === requester.id ? 0 : 1,
-    photoStatus: item.photo_status,
+    photoStatus: 'locked', // 새 채팅은 항상 잠금 상태로 시작, 요청 후 승인해야 열람 가능
     otherUser: item.owner_name,
     reward: item.reward,
     lastSenderUserId: requester.id,
