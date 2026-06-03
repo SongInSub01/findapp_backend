@@ -164,6 +164,8 @@ function toBleDeviceDto(row: {
   last_detected_accuracy_meters: number | null;
   focused_scan_until: string | null;
   rediscovered_at: string | null;
+  battery_percent: number | null;
+  battery_checked_at: string | null;
 }): BleDeviceDto {
   return {
     id: row.id,
@@ -186,6 +188,8 @@ function toBleDeviceDto(row: {
     lastDetectedAccuracyMeters: row.last_detected_accuracy_meters == null ? null : Number(row.last_detected_accuracy_meters),
     focusedScanUntil: row.focused_scan_until,
     rediscoveredAt: row.rediscovered_at,
+    batteryPercent: row.battery_percent == null ? null : Number(row.battery_percent),
+    batteryCheckedAt: row.battery_checked_at,
   };
 }
 
@@ -407,15 +411,58 @@ function isDeviceOverdue(input: {
   return Date.now() - lastSignalTime > input.disconnectMinutes * 60_000;
 }
 
+// 마지막 BLE 감지 좌표가 안전지대 반경 안인지 계산한다.
+function isDeviceInsideSafeZone(
+  device: {
+    last_detected_latitude: number | null;
+    last_detected_longitude: number | null;
+  },
+  safeZones: Array<{
+    latitude: number | null;
+    longitude: number | null;
+    radius_meters: number;
+  }>,
+) {
+  if (device.last_detected_latitude == null || device.last_detected_longitude == null) {
+    return false;
+  }
+
+  const earthRadiusMeters = 6_371_000;
+  const deviceLatitude = Number(device.last_detected_latitude);
+  const deviceLongitude = Number(device.last_detected_longitude);
+  const toRadians = (value: number) => value * Math.PI / 180;
+
+  return safeZones.some((zone) => {
+    if (zone.latitude == null || zone.longitude == null) {
+      return false;
+    }
+
+    const latitudeDelta = toRadians(Number(zone.latitude) - deviceLatitude);
+    const longitudeDelta = toRadians(Number(zone.longitude) - deviceLongitude);
+    const deviceLatitudeRadians = toRadians(deviceLatitude);
+    const zoneLatitudeRadians = toRadians(Number(zone.latitude));
+    const haversine =
+      Math.sin(latitudeDelta / 2) ** 2 +
+      Math.cos(deviceLatitudeRadians) *
+        Math.cos(zoneLatitudeRadians) *
+        Math.sin(longitudeDelta / 2) ** 2;
+    const distanceMeters =
+      2 * earthRadiusMeters * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+    return distanceMeters <= zone.radius_meters;
+  });
+}
+
 async function reconcileOverdueBleDevices(input: {
   userId: string;
   ownerName: string;
   alertSettings: AlertSettingsDto;
 }) {
   const deviceRows = await listBleDevices(input.userId);
+  const safeZones = await listSafeZones(input.userId);
   const overdueRows = deviceRows.filter(
     (device) =>
       device.status !== 'lost' &&
+      !isDeviceInsideSafeZone(device, safeZones) &&
       isDeviceOverdue({
         lastSignalAt: device.last_signal_at,
         disconnectMinutes: input.alertSettings.disconnectMinutes,

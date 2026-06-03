@@ -46,6 +46,8 @@ function toBleDeviceDto(row: {
   last_detected_accuracy_meters: number | null;
   focused_scan_until: string | null;
   rediscovered_at: string | null;
+  battery_percent: number | null;
+  battery_checked_at: string | null;
 }) {
   return {
     id: row.id,
@@ -68,6 +70,8 @@ function toBleDeviceDto(row: {
     lastDetectedAccuracyMeters: row.last_detected_accuracy_meters == null ? null : Number(row.last_detected_accuracy_meters),
     focusedScanUntil: row.focused_scan_until,
     rediscoveredAt: row.rediscovered_at,
+    batteryPercent: row.battery_percent == null ? null : Number(row.battery_percent),
+    batteryCheckedAt: row.battery_checked_at,
   };
 }
 

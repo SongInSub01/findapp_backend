@@ -24,12 +24,15 @@ export async function listBleDevices(userId: string) {
     last_detected_accuracy_meters: number | null;
     focused_scan_until: string | null;
     rediscovered_at: string | null;
+    battery_percent: number | null;
+    battery_checked_at: string | null;
   }>(
     `
       select id, name, icon_key, status, location, last_seen, ble_code, map_x, map_y,
              last_signal_at, ble_status, distance, reward, photo_asset_path,
              last_rssi, last_detected_latitude, last_detected_longitude,
-             last_detected_accuracy_meters, focused_scan_until, rediscovered_at
+             last_detected_accuracy_meters, focused_scan_until, rediscovered_at,
+             battery_percent, battery_checked_at
       from ble_devices
       where user_id = $1
       order by created_at asc
@@ -139,6 +142,23 @@ export async function updateBleDevice(input: {
       input.reward ?? null,
       input.photoAssetPath ?? null,
     ],
+  );
+  return result.rows[0] ?? null;
+}
+
+// 로그인한 사용자가 소유한 BLE 기기만 삭제해 같은 태그를 다시 등록할 수 있게 한다.
+export async function deleteBleDevice(input: {
+  deviceId: string;
+  userId: string;
+}) {
+  const result = await query<{ id: string }>(
+    `
+      delete from ble_devices
+      where id = $1
+        and user_id = $2
+      returning id
+    `,
+    [input.deviceId, input.userId],
   );
   return result.rows[0] ?? null;
 }

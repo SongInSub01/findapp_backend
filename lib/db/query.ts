@@ -2,10 +2,15 @@
 import type { QueryResultRow } from 'pg';
 
 import { getDb } from '@/lib/db/pool';
+import { toPublicDatabaseError } from '@/lib/db/public_error';
 
 export async function query<T extends QueryResultRow>(
   text: string,
   values: unknown[] = [],
 ) {
-  return getDb().query<T>(text, values);
+  try {
+    return await getDb().query<T>(text, values);
+  } catch (error) {
+    throw toPublicDatabaseError(error);
+  }
 }

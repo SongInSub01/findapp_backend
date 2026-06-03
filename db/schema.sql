@@ -97,6 +97,21 @@ alter table ble_devices add column if not exists last_detected_longitude numeric
 alter table ble_devices add column if not exists last_detected_accuracy_meters numeric(6, 2);
 alter table ble_devices add column if not exists focused_scan_until timestamptz;
 alter table ble_devices add column if not exists rediscovered_at timestamptz;
+-- BLE 태그에서 직접 읽은 배터리 잔량과 마지막 확인 시각을 저장한다.
+alter table ble_devices add column if not exists battery_percent integer;
+alter table ble_devices add column if not exists battery_checked_at timestamptz;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'ble_devices_battery_percent_check'
+  ) then
+    alter table ble_devices
+      add constraint ble_devices_battery_percent_check
+      check (battery_percent between 0 and 100)
+      not valid;
+  end if;
+end $$;
 
 -- 같은 사용자가 동일한 BLE 코드를 중복 등록하지 못하게 막는다.
 create unique index if not exists ble_devices_user_ble_code_unique_idx

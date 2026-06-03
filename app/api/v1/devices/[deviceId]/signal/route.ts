@@ -13,6 +13,7 @@ const refreshSchema = z.object({
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   accuracyMeters: z.number().nonnegative().nullable().optional(),
+  batteryPercent: z.number().int().min(0).max(100).nullable().optional(),
   focusMinutes: z.number().int().min(1).max(30).optional(),
 });
 
@@ -87,7 +88,9 @@ export async function POST(
             last_detected_longitude = coalesce($7, last_detected_longitude),
             last_detected_accuracy_meters = coalesce($8, last_detected_accuracy_meters),
             focused_scan_until = coalesce($9, focused_scan_until),
-            rediscovered_at = case when $10 then $3::timestamptz else rediscovered_at end
+            rediscovered_at = case when $10 then $3::timestamptz else rediscovered_at end,
+            battery_percent = coalesce($11, battery_percent),
+            battery_checked_at = case when $11 is null then battery_checked_at else $3::timestamptz end
         where id = $1
           and user_id = $2
       `,
@@ -102,6 +105,7 @@ export async function POST(
         body.accuracyMeters ?? null,
         focusedScanUntil,
         wasLost,
+        body.batteryPercent ?? null,
       ],
     );
 
@@ -140,6 +144,7 @@ export async function POST(
       lastSignalAt: updatedAt,
       bleStatus: wasLost ? 'rediscovered' : nextBleStatus,
       focusedScanUntil,
+      batteryPercent: body.batteryPercent ?? null,
     });
   } catch (error) {
     return NextResponse.json(
