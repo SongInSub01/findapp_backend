@@ -66,6 +66,7 @@ export async function listChatThreadsForUser(userId: string) {
     requester_user_id: string | null;
     owner_user_id: string;
     last_sender_user_id: string | null;
+    photo_asset_path: string | null;
   }>(
     `
       select chat_threads.id,
@@ -86,7 +87,8 @@ export async function listChatThreadsForUser(userId: string) {
              chat_threads.reward,
              chat_threads.requester_user_id,
              lost_items.owner_user_id,
-             chat_threads.last_sender_user_id
+             chat_threads.last_sender_user_id,
+             lost_items.photo_asset_path
       from chat_threads
       inner join lost_items on lost_items.id = chat_threads.item_id
       left join users requester_user on requester_user.id = chat_threads.requester_user_id
@@ -104,6 +106,7 @@ export async function listChatThreadsForUser(userId: string) {
 
   return threadResult.rows.map((thread) => ({
     ...thread,
+    photo_asset_path: thread.photo_asset_path ?? null,
     messages: messagesByThread.get(thread.id) ?? [],
   }));
 }

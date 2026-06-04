@@ -1,24 +1,46 @@
 // 알림함과 신고 내역처럼 사용자 활동 로그 성격의 테이블 접근을 모아 둔다.
 import { query } from '@/lib/db/query';
+import { formatRelativeDateLabel } from '@/lib/utils/time_label';
 
 export async function listNotifications(userId: string) {
   const result = await query<{
     id: string;
     title: string;
     body: string;
-    time_label: string;
     type: 'alert' | 'approval' | 'info' | 'report';
     is_read: boolean;
+    created_at: string;
   }>(
     `
-      select id, title, body, time_label, type, is_read
+      select id, title, body, type, is_read, created_at
       from notifications
       where user_id = $1
       order by created_at desc
     `,
     [userId],
   );
-  return result.rows;
+  // time_label을 created_at 기준으로 동적 계산한다.
+  return result.rows.map((row) => ({
+    ...row,
+    time_label: formatRelativeDateLabel(row.created_at),
+  }));
+}
+
+export async function deleteNotification(input: {
+  notificationId: string;
+  userId: string;
+}) {
+  await query(
+    `delete from notifications where id = $1 and user_id = $2`,
+    [input.notificationId, input.userId],
+  );
+}
+
+export async function clearAllNotifications(userId: string) {
+  await query(
+    `delete from notifications where user_id = $1`,
+    [userId],
+  );
 }
 
 export async function listReports() {

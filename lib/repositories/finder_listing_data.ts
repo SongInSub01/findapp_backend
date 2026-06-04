@@ -61,6 +61,7 @@ export interface LegacyLostItemRow {
   thread_id: string | null;
   photo_asset_path: string | null;
   source_device_id: string | null;
+  ble_code: string | null;
   latitude: number | null;
   longitude: number | null;
   accuracy_meters: number | null;
@@ -395,12 +396,17 @@ export async function getFoundListingById(itemId: string) {
 export async function listLegacyLostItems() {
   const result = await query<LegacyLostItemRow>(
     `
-      select id, owner_user_id, title, location, time_label, reward, status, photo_status, distance,
-             owner_name, description, map_x, map_y, thread_id, photo_asset_path,
-             source_device_id, latitude, longitude, accuracy_meters, created_at::text as created_at,
-             listing_status, lost_at::text as happened_at
+      select lost_items.id, lost_items.owner_user_id, lost_items.title, lost_items.location,
+             lost_items.time_label, lost_items.reward, lost_items.status, lost_items.photo_status,
+             lost_items.distance, lost_items.owner_name, lost_items.description,
+             lost_items.map_x, lost_items.map_y, lost_items.thread_id, lost_items.photo_asset_path,
+             lost_items.source_device_id, ble_devices.ble_code,
+             lost_items.latitude, lost_items.longitude, lost_items.accuracy_meters,
+             lost_items.created_at::text as created_at,
+             lost_items.listing_status, lost_items.lost_at::text as happened_at
       from lost_items
-      order by created_at desc
+      left join ble_devices on ble_devices.id = lost_items.source_device_id
+      order by lost_items.created_at desc
     `,
   );
   return result.rows;

@@ -258,7 +258,7 @@ export async function approvePhotoForThread(input: {
   ensureThreadParticipant(requester.id, thread);
 
   const timeLabel = formatTimeLabel();
-  const message = '주인이 사진 열람을 허용했습니다.';
+  const message = '사진 열람이 승인되었습니다.';
 
   await createChatMessage({
     threadId: input.threadId,

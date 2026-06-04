@@ -436,3 +436,31 @@ export async function purchaseRewardShopItem(userId: string, itemId: string) {
 
   return getRewardStatus(userId);
 }
+
+/// 분실물 찾음 처리 시 사례금의 일정 비율을 포인트로 적립한다.
+/// 비율: 사례금 1000원 → 1포인트 (최소 5, 최대 500, 0.1%)
+export async function addPointsForResolvedItem(userId: string, rewardAmount: number): Promise<void> {
+  if (rewardAmount <= 0) return;
+  await ensureRewardRows(userId);
+
+  const points = Math.max(5, Math.min(500, Math.floor(rewardAmount / 1000)));
+
+  await query(
+    `
+      update reward_accounts
+      set current_points  = current_points  + $2,
+          lifetime_points = lifetime_points + $2,
+          updated_at      = now()
+      where user_id = $1
+    `,
+    [userId, points],
+  );
+
+  await query(
+    `
+      insert into reward_point_events (user_id, points, reason)
+      values ($1, $2, '분실물 찾음 처리 - 사례금 적립')
+    `,
+    [userId, points],
+  );
+}

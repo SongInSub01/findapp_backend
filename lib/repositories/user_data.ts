@@ -207,7 +207,6 @@ export async function updateUserProfile(input: {
       set name = $2,
           user_name = $2,
           email = $3,
-          login_id = $3,
           initials = $4,
           public_name = $5,
           photo_asset_path = $6,

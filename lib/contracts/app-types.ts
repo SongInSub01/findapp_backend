@@ -107,6 +107,7 @@ export interface LostItemDto {
   isMine: boolean;
   description: string;
   sourceDeviceId: string | null;
+  bleCode: string | null;
   latitude: number | null;
   longitude: number | null;
   accuracyMeters: number | null;
@@ -137,6 +138,7 @@ export interface ChatThreadDto {
   photoStatus: PhotoAccessStatus;
   otherUser: string;
   reward: number | null;
+  photoAssetPath: string | null;
   messages: ChatMessageDto[];
 }
 
@@ -194,6 +196,7 @@ export interface FinderUserProfileDto {
   name: string;
   email: string;
   loginId: string;
+  initials: string;
   publicName: string;
   role: string;
   phoneNumber: string | null;

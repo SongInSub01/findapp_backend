@@ -97,6 +97,8 @@ alter table ble_devices add column if not exists last_detected_longitude numeric
 alter table ble_devices add column if not exists last_detected_accuracy_meters numeric(6, 2);
 alter table ble_devices add column if not exists focused_scan_until timestamptz;
 alter table ble_devices add column if not exists rediscovered_at timestamptz;
+alter table ble_devices add column if not exists battery_percent integer;
+alter table ble_devices add column if not exists battery_checked_at timestamptz;
 
 -- 같은 사용자가 동일한 BLE 코드를 중복 등록하지 못하게 막는다.
 create unique index if not exists ble_devices_user_ble_code_unique_idx

@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { updateBleDevice } from '@/lib/repositories/device_data';
+import { deleteBleDevice, updateBleDevice } from '@/lib/repositories/device_data';
 import { requireRequestedUser } from '@/lib/services/user_lookup_service';
 
 const updateDeviceSchema = z.object({
@@ -61,6 +61,36 @@ export async function PATCH(
   } catch (error) {
     return NextResponse.json(
       { message: error instanceof Error ? error.message : 'Failed to update device' },
+      { status: 400 },
+    );
+  }
+}
+
+// BLE 기기 삭제 요청을 받아 본인 소유의 등록 정보만 제거한다.
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ deviceId: string }> },
+) {
+  try {
+    const { deviceId } = await context.params;
+    const { searchParams } = new URL(request.url);
+    const user = await requireRequestedUser(
+      {
+        email: searchParams.get('email') ?? undefined,
+        loginId: searchParams.get('loginId') ?? undefined,
+      },
+      'BLE 기기 삭제 사용자를 찾을 수 없습니다.',
+    );
+
+    const deleted = await deleteBleDevice({ deviceId, userId: user.id });
+    if (!deleted) {
+      throw new Error('삭제할 BLE 기기를 찾을 수 없습니다.');
+    }
+
+    return NextResponse.json({ ok: true, deviceId: deleted.id });
+  } catch (error) {
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : 'Failed to delete device' },
       { status: 400 },
     );
   }

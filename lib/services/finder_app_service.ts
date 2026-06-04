@@ -66,7 +66,7 @@ import { listChatThreadsForUser, updateChatThread } from '@/lib/repositories/cha
 import { listBleDevices, updateBleDevice } from '@/lib/repositories/device_data';
 import { getCurrentLocation } from '@/lib/repositories/current_location_data';
 import { getAlertSettings, listSafeZones } from '@/lib/repositories/setting_data';
-import { getRewardStatus } from '@/lib/repositories/reward_data';
+import { getRewardStatus, addPointsForResolvedItem } from '@/lib/repositories/reward_data';
 import { requireRequestedUser } from '@/lib/services/user_lookup_service';
 import { formatRelativeDateLabel, nowLabel } from '@/lib/utils/time_label';
 
@@ -203,6 +203,7 @@ function toLostItemDto(row: {
   owner_name: string;
   description: string;
   source_device_id: string | null;
+  ble_code?: string | null;
   latitude: number | null;
   longitude: number | null;
   accuracy_meters: number | null;
@@ -229,6 +230,7 @@ function toLostItemDto(row: {
     isMine: row.owner_user_id === requesterUserId,
     description: row.description,
     sourceDeviceId: row.source_device_id,
+    bleCode: row.ble_code ?? null,
     latitude: row.latitude == null ? null : Number(row.latitude),
     longitude: row.longitude == null ? null : Number(row.longitude),
     accuracyMeters: row.accuracy_meters == null ? null : Number(row.accuracy_meters),
@@ -252,6 +254,7 @@ function toChatThreadDto(row: {
   photo_status: 'locked' | 'pending' | 'approved';
   other_user: string;
   reward: number | null;
+  photo_asset_path: string | null;
   messages: Array<{
     id: string;
     text: string;
@@ -271,6 +274,7 @@ function toChatThreadDto(row: {
     photoStatus: row.photo_status,
     otherUser: row.other_user,
     reward: row.reward,
+    photoAssetPath: row.photo_asset_path ?? null,
     messages: row.messages.map((message) => ({
       id: message.id,
       text: message.text,
@@ -735,6 +739,7 @@ export async function getFinderBootstrap(input: {
       name: user.name,
       email: user.email,
       loginId: user.login_id,
+      initials: user.name ? user.name.trim().substring(0, 1) : '?',
       publicName: user.public_name,
       role: user.role ?? 'user',
       phoneNumber: user.phone_number ?? null,
@@ -993,6 +998,11 @@ export async function updateFinderLostItem(input: {
     images: input.images,
   });
   await refreshMatchesForLostItem(input.itemId);
+
+  // 찾음 처리(resolved) 시 사례금 비율 포인트 적립
+  if (input.listingStatus === 'resolved' && input.reward > 0) {
+    await addPointsForResolvedItem(user.id, input.reward).catch(() => {});
+  }
 
   return getFinderListingDetail({
     loginId: input.loginId,
