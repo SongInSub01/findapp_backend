@@ -323,6 +323,15 @@ async function main() {
       'reward_point_events',
     ],
   }, null, 2));
+
+  // 왕복 검증이 성공하면 임시 사용자와 연결 데이터를 삭제해 앱 목록에 흔적을 남기지 않는다.
+  await query(
+    `
+      delete from users
+      where login_id = any($1::text[])
+    `,
+    [[email, peerEmail]],
+  );
 }
 
 main()

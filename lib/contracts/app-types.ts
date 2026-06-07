@@ -84,6 +84,8 @@ export interface BleDeviceDto {
   lastDetectedAccuracyMeters: number | null;
   focusedScanUntil: string | null;
   rediscoveredAt: string | null;
+  batteryPercent: number | null;
+  batteryCheckedAt: string | null;
 }
 
 export interface CurrentLocationDto {
